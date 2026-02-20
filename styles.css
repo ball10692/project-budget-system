@@ -1115,7 +1115,7 @@ tbody td {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .header-inner {
     padding: 0 16px;
   }

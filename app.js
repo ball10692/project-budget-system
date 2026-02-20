@@ -268,12 +268,12 @@ function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId, typeId = 
   if (search) {
     const s = search.toLowerCase();
     projects = projects.filter(p =>
-      (p.subItem && p.subItem.toLowerCase().includes(s)) ||
-      (p.province && p.province.toLowerCase().includes(s)) ||
-      (p.village && p.village.toLowerCase().includes(s)) ||
-      (p.moo && p.moo.includes(s)) ||
-      (p.amphoe && p.amphoe.toLowerCase().includes(s)) ||
-      (p.tambon && p.tambon.toLowerCase().includes(s)) ||
+      (p.subItem && String(p.subItem).toLowerCase().includes(s)) ||
+      (p.province && String(p.province).toLowerCase().includes(s)) ||
+      (p.village && String(p.village).toLowerCase().includes(s)) ||
+      (p.moo && String(p.moo).toLowerCase().includes(s)) ||
+      (p.amphoe && String(p.amphoe).toLowerCase().includes(s)) ||
+      (p.tambon && String(p.tambon).toLowerCase().includes(s)) ||
       (p.budget && String(p.budget).includes(s)) ||
       (p.quantity && String(p.quantity).includes(s))
     );
@@ -313,7 +313,7 @@ function populateFiscalYearFilter(selectId) {
 }
 
 // ---- Utility: Init Filters for Page ----
-function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, typeId, budgetTypeId) {
+function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, typeId, budgetTypeId, statusId) {
   const agSel = document.getElementById(agencyId);
   const unitSel = document.getElementById(unitId);
   const searchIn = document.getElementById(searchId);
@@ -358,7 +358,7 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
     budgetTypeSel.addEventListener('change', renderFunc);
   }
 
-  const statusSel = document.getElementById('reviewStatusFilter');
+  const statusSel = statusId ? document.getElementById(statusId) : null;
   if (statusSel) {
     const currentStatus = statusSel.value;
     let statusHtml = '<option value="">ทุกสถานะ</option>';
@@ -1190,7 +1190,6 @@ document.addEventListener('DOMContentLoaded', () => {
   renderDashboard();
 
   // Init page filters
-  // Init page filters
   initPageFilters('projectSearch', 'projectAgencyFilter', 'projectUnitFilter', renderProjectsPage);
   initPageFilters(
     'reviewSearch',
@@ -1199,7 +1198,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderReviewPage,
     'reviewFiscalYearFilter',
     'reviewTypeFilter',
-    'reviewBudgetTypeFilter'
+    'reviewBudgetTypeFilter',
+    'reviewStatusFilter'
   );
 
   // Mobile Menu Logic
@@ -1214,7 +1214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close menu when a tab is clicked (on mobile)
     document.querySelectorAll('.nav-tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        if (window.innerWidth <= 768) {
+        if (window.innerWidth <= 600) {
           navTabs.classList.remove('active');
         }
       });
