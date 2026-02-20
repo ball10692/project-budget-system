@@ -65,6 +65,9 @@
   <!-- ===== HEADER ===== -->
   <header class="app-header">
     <div class="header-inner">
+      <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="เมนู">
+        ☰
+      </button>
       <div class="logo">
         <div class="logo-icon">🏛️</div>
         <div class="logo-text">
@@ -292,21 +295,48 @@
 
       <!-- Filters for Review Page -->
       <div class="filter-bar">
-        <span class="filter-label">🔍 ค้นหา:</span>
-        <input type="text" id="reviewSearch" placeholder="พิมพ์ชื่อโครงการ..." style="width:auto;min-width:200px">
+        <div class="filter-group">
+          <span class="filter-label">🔍 ค้นหา:</span>
+          <input type="text" id="reviewSearch" placeholder="พิมพ์ชื่อโครงการ..." style="width:auto;min-width:200px">
+        </div>
 
-        <span class="filter-label" style="margin-left:10px">📅 ปีงบประมาณ:</span>
-        <select id="reviewFiscalYearFilter" style="width:auto;min-width:130px">
-          <option value="">ทุกปีงบประมาณ</option>
-        </select>
+        <div class="filter-group">
+          <span class="filter-label">📅 ปีงบประมาณ:</span>
+          <select id="reviewFiscalYearFilter" style="width:auto;min-width:130px">
+            <option value="">ทุกปีงบประมาณ</option>
+          </select>
+        </div>
 
-        <span class="filter-label" style="margin-left:10px">🏢 กรอง:</span>
-        <select id="reviewAgencyFilter" style="width:auto;min-width:180px">
-          <option value="">ทุกสำนักงานภาค</option>
-        </select>
-        <select id="reviewUnitFilter" style="width:auto;min-width:150px">
-          <option value="">ทุกหน่วย</option>
-        </select>
+        <div class="filter-group">
+          <span class="filter-label">📁 ประเภทงาน:</span>
+          <select id="reviewTypeFilter" style="width:auto;min-width:160px">
+            <option value="">ทุกประเภท</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">🏢 กรอง:</span>
+          <select id="reviewAgencyFilter" style="width:auto;min-width:180px">
+            <option value="">ทุกสำนักงานภาค</option>
+          </select>
+          <select id="reviewUnitFilter" style="width:auto;min-width:150px">
+            <option value="">ทุกหน่วย</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">💰 งบประมาณ:</span>
+          <select id="reviewBudgetTypeFilter" style="width:auto;min-width:160px">
+            <option value="">ทุกประเภทงบ</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">🎯 สถานะ:</span>
+          <select id="reviewStatusFilter" style="width:auto;min-width:160px">
+            <option value="">ทุกสถานะ</option>
+          </select>
+        </div>
       </div>
 
       <!-- Status Legend -->

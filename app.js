@@ -246,7 +246,7 @@ function initDashboardFilters() {
 }
 
 // ---- Utility: Get Filtered Projects ----
-function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId) {
+function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId, typeId = null, budgetTypeId = null, statusId = null) {
   let projects = DB.getProjects();
   const search = document.getElementById(searchId)?.value.trim().toLowerCase();
 
@@ -258,6 +258,9 @@ function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId) {
 
   const unit = document.getElementById(unitId)?.value;
   const fiscalYear = fiscalYearId ? document.getElementById(fiscalYearId)?.value : '';
+  const type = typeId ? document.getElementById(typeId)?.value : '';
+  const budgetType = budgetTypeId ? document.getElementById(budgetTypeId)?.value : '';
+  const status = statusId ? document.getElementById(statusId)?.value : '';
 
   if (fiscalYear) {
     projects = projects.filter(p => String(p.fiscalYear) === fiscalYear);
@@ -281,6 +284,20 @@ function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId) {
   if (unit) {
     projects = projects.filter(p => p.unitOrg === unit);
   }
+  if (type) {
+    projects = projects.filter(p => p.type === type);
+  }
+  if (budgetType) {
+    projects = projects.filter(p => p.budgetType === budgetType);
+  }
+  if (status) {
+    // Treat 'pending' status as basically null, undefined, or 'pending'
+    if (status === 'pending') {
+      projects = projects.filter(p => !p.reviewStatus || p.reviewStatus === 'pending');
+    } else {
+      projects = projects.filter(p => p.reviewStatus === status);
+    }
+  }
   return projects;
 }
 
@@ -296,11 +313,13 @@ function populateFiscalYearFilter(selectId) {
 }
 
 // ---- Utility: Init Filters for Page ----
-function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId) {
+function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, typeId, budgetTypeId) {
   const agSel = document.getElementById(agencyId);
   const unitSel = document.getElementById(unitId);
   const searchIn = document.getElementById(searchId);
   const fySel = fiscalYearId ? document.getElementById(fiscalYearId) : null;
+  const typeSel = typeId ? document.getElementById(typeId) : null;
+  const budgetTypeSel = budgetTypeId ? document.getElementById(budgetTypeId) : null;
 
   if (!agSel || !unitSel || !searchIn) return;
 
@@ -312,6 +331,43 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId) {
   if (fySel) {
     populateFiscalYearFilter(fiscalYearId);
     fySel.addEventListener('change', renderFunc);
+  }
+
+  // Populate Types & Budget Types dynamically based on existing data
+  if (typeSel) {
+    const types = [...new Set(DB.getProjects().map(p => p.type).filter(Boolean))].sort();
+    const currentType = typeSel.value;
+    // We already have hardcoded `<option value="">ทุกประเภท</option>` in HTML
+    let optionsHtml = '<option value="">ทุกประเภท</option>';
+    types.forEach(t => {
+      const typeObj = PROJECT_TYPES.find(pt => pt.id === t);
+      const label = typeObj ? `${typeObj.id} - ${typeObj.label}` : t;
+      optionsHtml += `<option value="${t}">${label}</option>`;
+    });
+    typeSel.innerHTML = optionsHtml;
+
+    if (types.includes(currentType)) typeSel.value = currentType;
+    typeSel.addEventListener('change', renderFunc);
+  }
+
+  if (budgetTypeSel) {
+    const budgetTypes = [...new Set(DB.getProjects().map(p => p.budgetType).filter(Boolean))].sort();
+    const currentBudgetType = budgetTypeSel.value;
+    budgetTypeSel.innerHTML = '<option value="">ทุกประเภทงบ</option>' + budgetTypes.map(b => `<option value="${b}">${b}</option>`).join('');
+    if (budgetTypes.includes(currentBudgetType)) budgetTypeSel.value = currentBudgetType;
+    budgetTypeSel.addEventListener('change', renderFunc);
+  }
+
+  const statusSel = document.getElementById('reviewStatusFilter');
+  if (statusSel) {
+    const currentStatus = statusSel.value;
+    let statusHtml = '<option value="">ทุกสถานะ</option>';
+    REVIEW_STATUSES.forEach(s => {
+      statusHtml += `<option value="${s.id}">${s.icon} ${s.label}</option>`;
+    });
+    statusSel.innerHTML = statusHtml;
+    if (currentStatus) statusSel.value = currentStatus;
+    statusSel.addEventListener('change', renderFunc);
   }
 
   // Populate Units (dynamic based on selection)
@@ -646,7 +702,15 @@ function handleImportExcel(event) {
 
 // ===== PAGE 3: REVIEW =====
 function renderReviewPage() {
-  const allProjects = getFilteredProjects('reviewSearch', 'reviewAgencyFilter', 'reviewUnitFilter', 'reviewFiscalYearFilter');
+  const allProjects = getFilteredProjects(
+    'reviewSearch',
+    'reviewAgencyFilter',
+    'reviewUnitFilter',
+    'reviewFiscalYearFilter',
+    'reviewTypeFilter',
+    'reviewBudgetTypeFilter',
+    'reviewStatusFilter'
+  );
   const maxRound = getMaxRound(DB.getProjects());
 
   // Ensure current round is valid (allow maxRound + 1 for starting a new round)
@@ -1126,8 +1190,36 @@ document.addEventListener('DOMContentLoaded', () => {
   renderDashboard();
 
   // Init page filters
+  // Init page filters
   initPageFilters('projectSearch', 'projectAgencyFilter', 'projectUnitFilter', renderProjectsPage);
-  initPageFilters('reviewSearch', 'reviewAgencyFilter', 'reviewUnitFilter', renderReviewPage, 'reviewFiscalYearFilter');
+  initPageFilters(
+    'reviewSearch',
+    'reviewAgencyFilter',
+    'reviewUnitFilter',
+    renderReviewPage,
+    'reviewFiscalYearFilter',
+    'reviewTypeFilter',
+    'reviewBudgetTypeFilter'
+  );
+
+  // Mobile Menu Logic
+  const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  const navTabs = document.querySelector('.nav-tabs');
+
+  if (mobileMenuBtn && navTabs) {
+    mobileMenuBtn.addEventListener('click', () => {
+      navTabs.classList.toggle('active');
+    });
+
+    // Close menu when a tab is clicked (on mobile)
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+          navTabs.classList.remove('active');
+        }
+      });
+    });
+  }
 
 
 });
