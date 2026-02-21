@@ -842,13 +842,13 @@ function renderReviewPage() {
     }
 
     return `
-    <div class="review-card" id="rc-${p.id}" style="${p.reviewStatus ? `border-left: 5px solid ${REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.color || '#64748b'}` : 'border-left: 5px solid #64748b'}">
+    <div class="review-card" data-id="${p.id}" id="rc-${p.id}" style="${p.reviewStatus ? `border-left: 5px solid ${REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.color || '#64748b'}` : 'border-left: 5px solid #64748b'}">
       <div class="review-card-header">
         <div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <div class="review-card-title">${p.subItem}</div>
             <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" onclick="editProject('${p.id}')">✏️ แก้ไขข้อมูล</button>
-            <span class="badge" style="background:${(REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.color || '#64748b')}20;color:${(REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.color || '#64748b')};border:1px solid ${(REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.color || '#64748b')}40">
+            <span class="badge review-status-badge" style="background:${(REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.color || '#64748b')}20;color:${(REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.color || '#64748b')};border:1px solid ${(REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.color || '#64748b')}40">
               ${(REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.icon || '⏳')} ${(REVIEW_STATUSES.find(s => s.id === p.reviewStatus)?.label || 'รอการพิจารณา')}
             </span>
           </div>
@@ -1005,29 +1005,59 @@ function updateStatusOptionStyles(projectId) {
 function saveReview(projectId) {
   const selected = document.querySelector(`input[name="status-${projectId}"]:checked`);
   const comment = document.getElementById(`comment-${projectId}`).value;
-  const status = selected ? selected.value : '';
+  const status = selected ? selected.value : (DB.getProjects().find(p => p.id === projectId)?.reviewStatus || 'pending');
+
   DB.updateReview(projectId, status, comment);
   showToast('บันทึกการพิจารณาสำเร็จ', 'success');
-  renderReviewPage(); // Refresh UI to show status
+
+  // Update only this card's UI instead of full re-render to avoid losing other unsaved inputs
+  updateReviewCardUI(projectId, status);
+}
+
+function updateReviewCardUI(projectId, status) {
+  const statusData = REVIEW_STATUSES.find(s => s.id === status) || { id: 'pending', label: 'รอการพิจารณา', icon: '⏳' };
+  const card = document.querySelector(`.review-card[data-id="${projectId}"]`); // Need to check if card has this data-id
+
+  // If card doesn't have data-id, we might need to find it by looking for the radio or textarea
+  const container = document.getElementById(`comment-${projectId}`)?.closest('.review-card');
+  if (container) {
+    const badge = container.querySelector('.review-status-badge'); // Need to check class names in renderReviewPage
+    if (badge) {
+      badge.innerHTML = `${statusData.icon} ${statusData.label}`;
+      // Update badge class if necessary
+      badge.className = 'review-status-badge ' + (status === 'green' ? 'badge-green' : (status === 'adjust' || status === 'docs' || status === 'clarify') ? 'badge-yellow' : status === 'red' ? 'badge-red' : 'badge-gray');
+    }
+  }
 }
 
 function saveAllReviews() {
-  const projects = DB.getProjects().filter(p => (p.round || 1) === currentReviewRound);
-  let count = 0;
+  const projects = getFilteredProjects(
+    'reviewSearch',
+    'reviewAgencyFilter',
+    'reviewUnitFilter',
+    'reviewFiscalYearFilter',
+    'reviewTypeFilter',
+    'reviewBudgetTypeFilter',
+    'reviewStatusFilter'
+  ).filter(p => (p.round || 1) === currentReviewRound);
+
+  const updates = [];
   projects.forEach(p => {
     const selected = document.querySelector(`input[name="status-${p.id}"]:checked`);
     const commentEl = document.getElementById(`comment-${p.id}`);
+
+    // Status: selected value, or current status if not selected
     const status = selected ? selected.value : p.reviewStatus;
     const comment = commentEl ? commentEl.value : p.comment;
 
     if (status !== p.reviewStatus || comment !== p.comment) {
-      DB.updateReview(p.id, status, comment);
-      count++;
+      updates.push({ id: p.id, status, comment });
     }
   });
 
-  if (count > 0) {
-    showToast(`บันทึกการพิจารณา ${count} โครงการสำเร็จ`, 'success');
+  if (updates.length > 0) {
+    DB.updateReviews(updates);
+    showToast(`บันทึกการพิจารณา ${updates.length} โครงการสำเร็จ`, 'success');
     renderReviewPage();
   } else {
     showToast('ไม่มีการเปลี่ยนแปลง', 'info');

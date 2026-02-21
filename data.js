@@ -196,8 +196,23 @@ const DB = {
         const projects = this.getProjects();
         const idx = projects.findIndex(p => p.id === id);
         if (idx !== -1) {
-            projects[idx].reviewStatus = status;
+            projects[idx].reviewStatus = status || 'pending';
             projects[idx].comment = comment;
+            this.saveProjects(projects);
+        }
+    },
+    updateReviews(updates) {
+        const projects = this.getProjects();
+        let changed = false;
+        updates.forEach(upd => {
+            const idx = projects.findIndex(p => p.id === upd.id);
+            if (idx !== -1) {
+                projects[idx].reviewStatus = upd.status || 'pending';
+                projects[idx].comment = upd.comment;
+                changed = true;
+            }
+        });
+        if (changed) {
             this.saveProjects(projects);
         }
     },
