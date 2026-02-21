@@ -143,7 +143,7 @@ function getMaxRound(projects) {
 }
 
 function typeIcon(id) {
-  return { '01': '🛣️', '02': '💧', '03': '🏘️', '04': '🌾' }[id] || '📋';
+  return { 'งานก่อสร้างเส้นทางคมนาคม': '🛣️', 'งานจัดหาน้ำกินน้ำใช้': '💧', 'งานพัฒนาและช่วยเหลือประชาชน': '🏘️', 'งานเกษตรผสมผสาน': '🌾' }[id] || '📋';
 }
 
 function statusBadge(status) {
@@ -241,7 +241,7 @@ function initDashboardFilters() {
     agSel.disabled = false;
   }
 
-  typeSel.innerHTML = '<option value="">ทุกประเภทงาน</option>' + PROJECT_TYPES.map(t => `<option value="${t.id}">${t.id} - ${t.label}</option>`).join('');
+  typeSel.innerHTML = '<option value="">ทุกประเภทงาน</option>' + PROJECT_TYPES.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
   agSel.onchange = typeSel.onchange = renderDashboard;
 }
 
@@ -341,7 +341,7 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
     let optionsHtml = '<option value="">ทุกประเภท</option>';
     types.forEach(t => {
       const typeObj = PROJECT_TYPES.find(pt => pt.id === t);
-      const label = typeObj ? `${typeObj.id} - ${typeObj.label}` : t;
+      const label = typeObj ? typeObj.label : t;
       optionsHtml += `<option value="${t}">${label}</option>`;
     });
     typeSel.innerHTML = optionsHtml;
@@ -1173,7 +1173,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fyInline.innerHTML = generateFiscalYearOptions(2571);
 
   const fType = document.getElementById('fType');
-  fType.innerHTML = PROJECT_TYPES.map(t => `<option value="${t.id}">${t.id} - ${t.label}</option>`).join('');
+  fType.innerHTML = PROJECT_TYPES.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
 
   const fBudgetType = document.getElementById('fBudgetType');
   fBudgetType.innerHTML = BUDGET_TYPES.map(b => `<option value="${b}">${b}</option>`).join('');

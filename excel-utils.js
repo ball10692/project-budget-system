@@ -4,7 +4,7 @@
 const ExcelUtils = {
     // Template column headers matching the new data model
     TEMPLATE_HEADERS: [
-        'ประเภทงาน (01/02/03/04)',
+        'ประเภทงาน',
         'รายการย่อย',
         'มิติงาน',
         'หมู่',
@@ -21,8 +21,8 @@ const ExcelUtils = {
     ],
 
     TEMPLATE_EXAMPLE: [
-        ['01', 'ถนนลาดยางสายตัวอย่าง', 'กว้าง 6 ม. ยาว 1,000 ม.', '3', 'บ้านดอน', 'ดอนแร่', 'เมือง', 'ราชบุรี', 1000, 'เมตร', 1500000, 'งบหลัก', 'สำนักงานภาค 1', 'กองพัน ทพ.11'],
-        ['02', 'ระบบประปาหมู่บ้าน', 'ขนาด 5 ลบ.ม./ชม.', '5', 'หนองแค', 'หนองแค', 'บ้านโป่ง', 'ราชบุรี', 1, 'ระบบ', 800000, 'งบเสริม', 'สำนักงานภาค 2', 'กองพัน ทพ.12'],
+        ['งานก่อสร้างเส้นทางคมนาคม', 'ถนนลาดยางสายตัวอย่าง', 'กว้าง 6 ม. ยาว 1,000 ม.', '3', 'บ้านดอน', 'ดอนแร่', 'เมือง', 'ราชบุรี', 1000, 'เมตร', 1500000, 'งบหลัก', 'สำนักงานภาค 1', 'กองพัน ทพ.11'],
+        ['งานจัดหาน้ำกินน้ำใช้', 'ระบบประปาหมู่บ้าน', 'ขนาด 5 ลบ.ม./ชม.', '5', 'หนองแค', 'หนองแค', 'บ้านโป่ง', 'ราชบุรี', 1, 'ระบบ', 800000, 'งบเสริม', 'สำนักงานภาค 2', 'กองพัน ทพ.12'],
     ],
 
     exportTemplate(fiscalYear) {
@@ -41,7 +41,7 @@ const ExcelUtils = {
         ];
         const currentTypes = typeof DB !== 'undefined' ? DB.getProjectTypes() : PROJECT_TYPES;
         currentTypes.forEach(t => {
-            instructions.push([`  ${t.id} = ${t.label}`]);
+            instructions.push([`  ${t.label}`]);
             const subs = typeof DB !== 'undefined' ? DB.getSubItemsForType(t.id) : [];
             if (subs.length > 0) {
                 instructions.push([`    รายการย่อย: ${subs.join(', ')}`]);
@@ -94,7 +94,7 @@ const ExcelUtils = {
                 }
 
                 // Valid type codes
-                const validTypes = ['01', '02', '03', '04'];
+                const _legacyTypes = ['01', '02', '03', '04'];
 
                 // Skip header row
                 const projects = [];
@@ -103,18 +103,28 @@ const ExcelUtils = {
                     const row = rows[i];
                     if (!row[0] && !row[1]) continue; // skip empty rows
 
-                    // Try to parse type code (supports "04", "04 - Name", or "Name")
-                    let typeId = '01'; // default
+                    // Try to parse type label
+                    let typeId = 'งานก่อสร้างเส้นทางคมนาคม'; // default
                     const typeInput = String(row[0] || '').trim();
 
-                    // Check for leading 2 digits
-                    const codeMatch = typeInput.match(/^(0[1-4])/);
-                    if (codeMatch) {
-                        typeId = codeMatch[1];
-                    } else if (typeof PROJECT_TYPES !== 'undefined') {
-                        // Try matching by label (fuzzy match)
+                    if (typeof PROJECT_TYPES !== 'undefined') {
+                        // fuzzy match label first
                         const found = PROJECT_TYPES.find(t => typeInput.includes(t.label) || t.label.includes(typeInput));
-                        if (found) typeId = found.id;
+                        if (found) {
+                            typeId = found.id;
+                        } else {
+                            // Check for legacy leading 2 digits or legacy IDs fallback just in case
+                            const codeMatch = typeInput.match(/^(0[1-4])/);
+                            if (codeMatch) {
+                                const legacyMap = {
+                                    '01': 'งานก่อสร้างเส้นทางคมนาคม',
+                                    '02': 'งานจัดหาน้ำกินน้ำใช้',
+                                    '03': 'งานพัฒนาและช่วยเหลือประชาชน',
+                                    '04': 'งานเกษตรผสมผสาน'
+                                };
+                                typeId = legacyMap[codeMatch[1]] || typeId;
+                            }
+                        }
                     }
 
                     const subItem = String(row[1] || '').trim();
@@ -250,7 +260,7 @@ const ExcelUtils = {
         ];
 
         const typeLabels = {};
-        PROJECT_TYPES.forEach(t => { typeLabels[t.id] = `${t.id} - ${t.label}`; });
+        PROJECT_TYPES.forEach(t => { typeLabels[t.id] = t.label; });
 
         const detailRows = projects.map(p => [
             p.id, typeLabels[p.type] || p.type, p.subItem, p.dimension,
