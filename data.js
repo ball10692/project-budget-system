@@ -156,16 +156,41 @@ const SAMPLE_PROJECTS = [
 // ===== DATA ACCESS LAYER =====
 const DB = {
     projectsCache: null,
+    projectsMap: {}, // O(1) lookup map
+    saveTimeout: null,
+
     getProjects() {
         if (!this.projectsCache) {
             const stored = localStorage.getItem('pb_projects');
             this.projectsCache = stored ? JSON.parse(stored) : [...SAMPLE_PROJECTS];
+            this.rebuildMap();
         }
         return this.projectsCache;
     },
-    saveProjects(projects) {
+    rebuildMap() {
+        this.projectsMap = {};
+        this.projectsCache.forEach(p => {
+            this.projectsMap[p.id] = p;
+        });
+    },
+    saveProjects(projects, immediate = false) {
         this.projectsCache = projects;
-        localStorage.setItem('pb_projects', JSON.stringify(projects));
+        this.rebuildMap();
+
+        if (this.saveTimeout) {
+            clearTimeout(this.saveTimeout);
+        }
+
+        if (immediate) {
+            localStorage.setItem('pb_projects', JSON.stringify(projects));
+        } else {
+            // Debounce save to prevent UI lag during rapid updates
+            this.saveTimeout = setTimeout(() => {
+                localStorage.setItem('pb_projects', JSON.stringify(this.projectsCache));
+                this.saveTimeout = null;
+                console.log('DB: Projects saved to localStorage (debounced)');
+            }, 500);
+        }
     },
     addProject(project) {
         const projects = this.getProjects();
@@ -176,7 +201,7 @@ const DB = {
         project.round = 1;
         project.history = [];
         projects.push(project);
-        this.saveProjects(projects);
+        this.saveProjects(projects, true); // Immediate save for new items
         return project;
     },
     addProjects(newProjects) {
@@ -190,37 +215,36 @@ const DB = {
             p.history = [];
             projects.push(p);
         });
-        this.saveProjects(projects);
+        this.saveProjects(projects, true); // Immediate save for bulk import
     },
     updateReview(id, status, comment) {
-        const projects = this.getProjects();
-        const idx = projects.findIndex(p => p.id === id);
-        if (idx !== -1) {
-            projects[idx].reviewStatus = status || 'pending';
-            projects[idx].comment = comment;
-            this.saveProjects(projects);
+        this.getProjects(); // Ensure loaded
+        const project = this.projectsMap[id];
+        if (project) {
+            project.reviewStatus = status || 'pending';
+            project.comment = comment;
+            this.saveProjects(this.projectsCache);
         }
     },
     updateReviews(updates) {
-        const projects = this.getProjects();
+        this.getProjects(); // Ensure loaded
         let changed = false;
         updates.forEach(upd => {
-            const idx = projects.findIndex(p => p.id === upd.id);
-            if (idx !== -1) {
-                projects[idx].reviewStatus = upd.status || 'pending';
-                projects[idx].comment = upd.comment;
+            const project = this.projectsMap[upd.id];
+            if (project) {
+                project.reviewStatus = upd.status || 'pending';
+                project.comment = upd.comment;
                 changed = true;
             }
         });
         if (changed) {
-            this.saveProjects(projects);
+            this.saveProjects(this.projectsCache);
         }
     },
     reviseProject(id) {
-        const projects = this.getProjects();
-        const idx = projects.findIndex(p => p.id === id);
-        if (idx !== -1) {
-            const p = projects[idx];
+        this.getProjects(); // Ensure loaded
+        const p = this.projectsMap[id];
+        if (p) {
             // Save current state to history
             const historyItem = {
                 round: p.round || 1,
@@ -245,21 +269,21 @@ const DB = {
             p.reviewStatus = 'pending';
             p.comment = '';
 
-            this.saveProjects(projects);
+            this.saveProjects(this.projectsCache, true); // Immediate save for revision
             return p;
         }
     },
     updateProject(id, updates) {
-        const projects = this.getProjects();
-        const idx = projects.findIndex(p => p.id === id);
-        if (idx !== -1) {
-            projects[idx] = { ...projects[idx], ...updates };
-            this.saveProjects(projects);
+        this.getProjects(); // Ensure loaded
+        const project = this.projectsMap[id];
+        if (project) {
+            Object.assign(project, updates);
+            this.saveProjects(this.projectsCache, true); // Immediate save for edits
         }
     },
     deleteProject(id) {
         const projects = this.getProjects().filter(p => p.id !== id);
-        this.saveProjects(projects);
+        this.saveProjects(projects, true); // Immediate save for deletion
     },
     getAgencies() {
         const projects = this.getProjects();

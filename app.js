@@ -247,10 +247,9 @@ function initDashboardFilters() {
 
 // ---- Utility: Get Filtered Projects ----
 function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId, typeId = null, budgetTypeId = null, statusId = null) {
-  let projects = DB.getProjects();
+  const projects = DB.getProjects();
   const search = document.getElementById(searchId)?.value.trim().toLowerCase();
 
-  // Enforce Role base filtering on agency
   let agency = document.getElementById(agencyId)?.value;
   if (currentUser && currentUser.role === 'user') {
     agency = currentUser.responsibility;
@@ -260,45 +259,38 @@ function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId, typeId = 
   const fiscalYear = fiscalYearId ? document.getElementById(fiscalYearId)?.value : '';
   const type = typeId ? document.getElementById(typeId)?.value : '';
   const budgetType = budgetTypeId ? document.getElementById(budgetTypeId)?.value : '';
-  const status = statusId ? document.getElementById(statusId)?.value : '';
+  const statusFilter = statusId ? document.getElementById(statusId)?.value : '';
 
-  if (fiscalYear) {
-    projects = projects.filter(p => String(p.fiscalYear) === fiscalYear);
-  }
-  if (search) {
-    const s = search.toLowerCase();
-    projects = projects.filter(p =>
-      (p.subItem && String(p.subItem).toLowerCase().includes(s)) ||
-      (p.province && String(p.province).toLowerCase().includes(s)) ||
-      (p.village && String(p.village).toLowerCase().includes(s)) ||
-      (p.moo && String(p.moo).toLowerCase().includes(s)) ||
-      (p.amphoe && String(p.amphoe).toLowerCase().includes(s)) ||
-      (p.tambon && String(p.tambon).toLowerCase().includes(s)) ||
-      (p.budget && String(p.budget).includes(s)) ||
-      (p.quantity && String(p.quantity).includes(s))
-    );
-  }
-  if (agency) {
-    projects = projects.filter(p => p.regionalOffice === agency);
-  }
-  if (unit) {
-    projects = projects.filter(p => p.unitOrg === unit);
-  }
-  if (type) {
-    projects = projects.filter(p => p.type === type);
-  }
-  if (budgetType) {
-    projects = projects.filter(p => p.budgetType === budgetType);
-  }
-  if (status) {
-    // Treat 'pending' status as basically null, undefined, or 'pending'
-    if (status === 'pending') {
-      projects = projects.filter(p => !p.reviewStatus || p.reviewStatus === 'pending');
-    } else {
-      projects = projects.filter(p => p.reviewStatus === status);
+  return projects.filter(p => {
+    if (fiscalYear && String(p.fiscalYear) !== fiscalYear) return false;
+    if (agency && p.regionalOffice !== agency) return false;
+    if (unit && p.unitOrg !== unit) return false;
+    if (type && p.type !== type) return false;
+    if (budgetType && p.budgetType !== budgetType) return false;
+
+    if (statusFilter) {
+      if (statusFilter === 'pending') {
+        if (p.reviewStatus && p.reviewStatus !== 'pending') return false;
+      } else {
+        if (p.reviewStatus !== statusFilter) return false;
+      }
     }
-  }
-  return projects;
+
+    if (search) {
+      const s = search;
+      const match = (p.subItem && String(p.subItem).toLowerCase().includes(s)) ||
+        (p.province && String(p.province).toLowerCase().includes(s)) ||
+        (p.village && String(p.village).toLowerCase().includes(s)) ||
+        (p.moo && String(p.moo).toLowerCase().includes(s)) ||
+        (p.amphoe && String(p.amphoe).toLowerCase().includes(s)) ||
+        (p.tambon && String(p.tambon).toLowerCase().includes(s)) ||
+        (p.budget && String(p.budget).includes(s)) ||
+        (p.quantity && String(p.quantity).includes(s));
+      if (!match) return false;
+    }
+
+    return true;
+  });
 }
 
 // ---- Utility: Populate Fiscal Year Filter from project data ----
