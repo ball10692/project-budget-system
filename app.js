@@ -1015,18 +1015,22 @@ function saveReview(projectId) {
 }
 
 function updateReviewCardUI(projectId, status) {
-  const statusData = REVIEW_STATUSES.find(s => s.id === status) || { id: 'pending', label: 'รอการพิจารณา', icon: '⏳' };
-  const card = document.querySelector(`.review-card[data-id="${projectId}"]`); // Need to check if card has this data-id
+  const statusData = REVIEW_STATUSES.find(s => s.id === status) || { id: 'pending', label: 'รอการพิจารณา', color: '#64748b', icon: '⏳' };
 
-  // If card doesn't have data-id, we might need to find it by looking for the radio or textarea
-  const container = document.getElementById(`comment-${projectId}`)?.closest('.review-card');
+  // Find card by data-id
+  const container = document.querySelector(`.review-card[data-id="${projectId}"]`);
   if (container) {
-    const badge = container.querySelector('.review-status-badge'); // Need to check class names in renderReviewPage
+    // 1. Update Badge
+    const badge = container.querySelector('.review-status-badge');
     if (badge) {
       badge.innerHTML = `${statusData.icon} ${statusData.label}`;
-      // Update badge class if necessary
-      badge.className = 'review-status-badge ' + (status === 'green' ? 'badge-green' : (status === 'adjust' || status === 'docs' || status === 'clarify') ? 'badge-yellow' : status === 'red' ? 'badge-red' : 'badge-gray');
+      badge.style.background = `${statusData.color}20`;
+      badge.style.color = statusData.color;
+      badge.style.borderColor = `${statusData.color}40`;
     }
+
+    // 2. Update Card Border
+    container.style.borderLeft = `5px solid ${statusData.color}`;
   }
 }
 
@@ -1057,8 +1061,13 @@ function saveAllReviews() {
 
   if (updates.length > 0) {
     DB.updateReviews(updates);
+
+    // Realtime UI Update: Update each card individually instead of full re-render
+    updates.forEach(upd => {
+      updateReviewCardUI(upd.id, upd.status);
+    });
+
     showToast(`บันทึกการพิจารณา ${updates.length} โครงการสำเร็จ`, 'success');
-    renderReviewPage();
   } else {
     showToast('ไม่มีการเปลี่ยนแปลง', 'info');
   }
