@@ -431,7 +431,14 @@ function importWithFY() {
 }
 
 function renderProjectsPage() {
-  const projects = getFilteredProjects('projectSearch', 'projectAgencyFilter', 'projectUnitFilter');
+  const projects = getFilteredProjects(
+    'projectSearch',
+    'projectAgencyFilter',
+    'projectUnitFilter',
+    'projectFiscalYearFilter',
+    'projectTypeFilter',
+    'projectBudgetTypeFilter'
+  );
   const tbody = document.getElementById('projectsTableBody');
 
   // Update Bulk Action Header
@@ -1190,7 +1197,15 @@ document.addEventListener('DOMContentLoaded', () => {
   renderDashboard();
 
   // Init page filters
-  initPageFilters('projectSearch', 'projectAgencyFilter', 'projectUnitFilter', renderProjectsPage);
+  initPageFilters(
+    'projectSearch',
+    'projectAgencyFilter',
+    'projectUnitFilter',
+    renderProjectsPage,
+    'projectFiscalYearFilter',
+    'projectTypeFilter',
+    'projectBudgetTypeFilter'
+  );
   initPageFilters(
     'reviewSearch',
     'reviewAgencyFilter',
