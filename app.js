@@ -716,8 +716,8 @@ function renderReviewPage() {
   if (currentReviewRound > maxRound + 1) currentReviewRound = maxRound + 1;
   if (currentReviewRound < 1) currentReviewRound = 1;
 
-  // Filter by round
-  const projects = allProjects.filter(p => (p.round || 1) === currentReviewRound);
+  // Filter by round (use == in case of string vs number)
+  const projects = allProjects.filter(p => (p.round || 1) == currentReviewRound);
   const container = document.getElementById('reviewContainer');
 
   // Header Controls (Round Selector & Pull Button)
@@ -1027,22 +1027,23 @@ function updateReviewCardUI(projectId, status) {
 }
 
 function saveAllReviews() {
-  const projects = getFilteredProjects(
-    'reviewSearch',
-    'reviewAgencyFilter',
-    'reviewUnitFilter',
-    'reviewFiscalYearFilter',
-    'reviewTypeFilter',
-    'reviewBudgetTypeFilter',
-    'reviewStatusFilter'
-  ).filter(p => (p.round || 1) === currentReviewRound);
+  // To ensure we capture ALL changes made in the current round (even if some are currently filtered out of view),
+  // we could iterate through all projects in the round. 
+  // However, the DOM only contains elements for projects that are CURRENTLY RENDERED/MATCHING FILTERS.
+  // Thus, it is more reliable to iterate ALL projects in the current round and check if their elements exist.
+  const allInRound = DB.getProjects().filter(p => (p.round || 1) == currentReviewRound);
 
   const updates = [];
-  projects.forEach(p => {
+  allInRound.forEach(p => {
+    // Check if the project card inputs exist in the DOM
     const selected = document.querySelector(`input[name="status-${p.id}"]:checked`);
     const commentEl = document.getElementById(`comment-${p.id}`);
 
-    // Status: selected value, or current status if not selected
+    // If neither exists, this project wasn't rendered (likely filtered out or beyond the 50 limit)
+    // We skip it because we can't reliably read "new" unsaved browser state for it.
+    if (!selected && !commentEl) return;
+
+    // Status: selected value, or current status if not selected (e.g. still pending)
     const status = selected ? selected.value : p.reviewStatus;
     const comment = commentEl ? commentEl.value : p.comment;
 
