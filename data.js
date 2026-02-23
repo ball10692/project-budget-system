@@ -155,9 +155,38 @@ const SAMPLE_PROJECTS = [
 
 // ===== DATA ACCESS LAYER =====
 const DB = {
+    WEB_APP_URL: "https://script.google.com/macros/s/AKfycbx6jv8KELuU4hlDgaLJIlWRCcf2-HeL1jLEXwSnDUjAoiGnVG3IgSr2ouDAPaABXvAuhw/exec", // <-- ⚠️ นำ Web App URL ของคุณมาใส่ตรงนี้
     projectsCache: null,
     projectsMap: {}, // O(1) lookup map
     saveTimeout: null,
+
+    async init() {
+        if (this.WEB_APP_URL === "YOUR_WEB_APP_URL_HERE" || !this.WEB_APP_URL) {
+            console.warn("DB: ไม่ได้ตั้งค่า WEB_APP_URL, จะใช้งานด้วย localStorage แทน");
+            return;
+        }
+
+        try {
+            console.log("DB: กำลังโหลดข้อมูลจาก Google Sheets...");
+            const response = await fetch(this.WEB_APP_URL);
+            const data = await response.json();
+
+            if (Array.isArray(data) && data.length > 0) {
+                this.projectsCache = data;
+                localStorage.setItem('pb_projects', JSON.stringify(data)); // สำรองไว้ใน localStorage
+                console.log(`DB: โหลดโครงการจาก Sheets ได้ ${data.length} รายการ`);
+            } else if (data.length === 0) {
+                // If the remote sheet is totally empty, we probably want to sync default samples
+                console.log("DB: Google Sheets ว่างเปล่า, กำลังซิงค์ข้อมูลเริ่มต้นกลับไป...");
+                const stored = localStorage.getItem('pb_projects');
+                this.projectsCache = stored ? JSON.parse(stored) : [...SAMPLE_PROJECTS];
+                this.syncToSheets(this.projectsCache);
+            }
+        } catch (error) {
+            console.error("DB: เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Google Sheets:", error);
+        }
+        this.rebuildMap();
+    },
 
     getProjects() {
         if (!this.projectsCache) {
@@ -181,15 +210,46 @@ const DB = {
             clearTimeout(this.saveTimeout);
         }
 
+        // Always save to localStorage as backup
+        localStorage.setItem('pb_projects', JSON.stringify(this.projectsCache));
+
+        if (this.WEB_APP_URL === "YOUR_WEB_APP_URL_HERE" || !this.WEB_APP_URL) {
+            return; // Not configured, stop here
+        }
+
         if (immediate) {
-            localStorage.setItem('pb_projects', JSON.stringify(projects));
+            this.syncToSheets(this.projectsCache);
         } else {
             // Debounce save to prevent UI lag during rapid updates
             this.saveTimeout = setTimeout(() => {
-                localStorage.setItem('pb_projects', JSON.stringify(this.projectsCache));
+                this.syncToSheets(this.projectsCache);
                 this.saveTimeout = null;
-                console.log('DB: Projects saved to localStorage (debounced)');
-            }, 500);
+            }, 1000);
+        }
+    },
+    async syncToSheets(projects) {
+        try {
+            fetch(this.WEB_APP_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'save_projects',
+                    projects: projects
+                }),
+                headers: {
+                    "Content-Type": "text/plain;charset=utf-8" // use plain string post over JSON to avoid CORS preflight
+                }
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('DB: ซิงค์ข้อมูลไปยัง Google Sheets สำเร็จ');
+                    } else {
+                        console.error('DB: เว็บแอปรายงานข้อผิดพลาด:', data.error || data.message);
+                    }
+                })
+                .catch(err => console.error('DB: ติดต่อเว็บแอปไม่สำเร็จ:', err));
+        } catch (e) {
+            console.error('DB: Error in syncToSheets:', e);
         }
     },
     addProject(project) {

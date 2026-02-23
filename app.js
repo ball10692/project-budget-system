@@ -1860,7 +1860,26 @@ function resetDbDefaults() {
 }
 
 // ===== INITIALIZE =====
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Show a simple loading indicator
+  const loadingDiv = document.createElement('div');
+  loadingDiv.id = 'dbLoadingOverlay';
+  loadingDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.95);display:flex;align-items:center;justify-content:center;z-index:9999;color:#fff;font-size:20px;flex-direction:column;gap:15px;';
+  loadingDiv.innerHTML = '<div class="spinner" style="width:40px;height:40px;border:4px solid rgba(255,255,255,0.1);border-left-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite;"></div><div>กำลังเชื่อมต่อระบบฐานข้อมูล...</div><style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>';
+  document.body.appendChild(loadingDiv);
+
+  try {
+    if (typeof DB !== 'undefined' && DB.init) {
+      await DB.init();
+    }
+  } catch (err) {
+    console.error(err);
+  } finally {
+    if (document.getElementById('dbLoadingOverlay')) {
+      document.getElementById('dbLoadingOverlay').remove();
+    }
+  }
+
   checkAuth();
 
   document.querySelectorAll('.nav-tab').forEach(btn => {
