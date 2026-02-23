@@ -27,10 +27,7 @@ const DEFAULT_SUB_ITEMS = {
 };
 
 // Dynamic PROJECT_TYPES - loaded from localStorage or defaults
-let PROJECT_TYPES = (() => {
-    const stored = localStorage.getItem('pb_project_types');
-    return stored ? JSON.parse(stored) : [...DEFAULT_PROJECT_TYPES];
-})();
+let PROJECT_TYPES = [];
 
 const BUDGET_TYPES = [
     'งบหลัก',
@@ -58,10 +55,7 @@ const DEFAULT_UNITS = {
 };
 
 // Dynamic REGIONAL_OFFICES - loaded from localStorage or defaults
-let REGIONAL_OFFICES = (() => {
-    const stored = localStorage.getItem('pb_regional_offices');
-    return stored ? JSON.parse(stored) : [...DEFAULT_REGIONAL_OFFICES];
-})();
+let REGIONAL_OFFICES = [];
 
 const DEFAULT_USERS = [
     {
@@ -161,6 +155,13 @@ const DB = {
     saveTimeout: null,
 
     async init() {
+        // Init variables from localStorage first
+        const storedTypes = localStorage.getItem('pb_project_types');
+        PROJECT_TYPES = storedTypes ? JSON.parse(storedTypes) : [...DEFAULT_PROJECT_TYPES];
+
+        const storedOffices = localStorage.getItem('pb_regional_offices');
+        REGIONAL_OFFICES = storedOffices ? JSON.parse(storedOffices) : [...DEFAULT_REGIONAL_OFFICES];
+
         if (this.WEB_APP_URL === "YOUR_WEB_APP_URL_HERE" || !this.WEB_APP_URL) {
             console.warn("DB: ไม่ได้ตั้งค่า WEB_APP_URL, จะใช้งานด้วย localStorage แทน");
             return;
