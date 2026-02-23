@@ -171,16 +171,46 @@ const DB = {
             const response = await fetch(this.WEB_APP_URL);
             const data = await response.json();
 
-            if (Array.isArray(data) && data.length > 0) {
-                this.projectsCache = data;
-                localStorage.setItem('pb_projects', JSON.stringify(data)); // สำรองไว้ใน localStorage
-                console.log(`DB: โหลดโครงการจาก Sheets ได้ ${data.length} รายการ`);
-            } else if (data.length === 0) {
-                // If the remote sheet is totally empty, we probably want to sync default samples
-                console.log("DB: Google Sheets ว่างเปล่า, กำลังซิงค์ข้อมูลเริ่มต้นกลับไป...");
-                const stored = localStorage.getItem('pb_projects');
-                this.projectsCache = stored ? JSON.parse(stored) : [...SAMPLE_PROJECTS];
-                this.syncToSheets(this.projectsCache);
+            if (data && typeof data === 'object') {
+                if (data.projects && data.projects.length > 0) {
+                    this.projectsCache = data.projects;
+                    localStorage.setItem('pb_projects', JSON.stringify(data.projects));
+                } else {
+                    this.projectsCache = [...SAMPLE_PROJECTS];
+                }
+
+                if (data.projectTypes && data.projectTypes.length > 0) {
+                    PROJECT_TYPES = data.projectTypes;
+                    localStorage.setItem('pb_project_types', JSON.stringify(PROJECT_TYPES));
+                }
+
+                if (data.subItems && data.subItems.length > 0) {
+                    const subs = data.subItems.reduce((acc, row) => { acc[row._key] = row._value; return acc; }, {});
+                    localStorage.setItem('pb_sub_items', JSON.stringify(subs));
+                }
+
+                if (data.regionalOffices && data.regionalOffices.length > 0) {
+                    REGIONAL_OFFICES = data.regionalOffices.map(r => r._value);
+                    localStorage.setItem('pb_regional_offices', JSON.stringify(REGIONAL_OFFICES));
+                }
+
+                if (data.units && data.units.length > 0) {
+                    const units = data.units.reduce((acc, row) => { acc[row._key] = row._value; return acc; }, {});
+                    localStorage.setItem('pb_units', JSON.stringify(units));
+                }
+
+                if (data.users && data.users.length > 0) {
+                    localStorage.setItem('pb_users', JSON.stringify(data.users));
+                }
+
+                // If remote has no data at all (e.g. brand new sheet), sync all defaults
+                const allEmpty = !data.projects?.length && !data.users?.length;
+                if (allEmpty) {
+                    console.log("DB: Google Sheets ว่างเปล่า, กำลังซิงค์ข้อมูลเริ่มต้นทั้งหมดกลับไป...");
+                    this.syncAllToSheets();
+                }
+
+                console.log("DB: โหลดข้อมูลจาก Sheets เสร็จสมบูรณ์");
             }
         } catch (error) {
             console.error("DB: เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Google Sheets:", error);
@@ -218,22 +248,45 @@ const DB = {
         }
 
         if (immediate) {
-            this.syncToSheets(this.projectsCache);
+            this.syncToSheets('projects', this.projectsCache);
         } else {
             // Debounce save to prevent UI lag during rapid updates
             this.saveTimeout = setTimeout(() => {
-                this.syncToSheets(this.projectsCache);
+                this.syncToSheets('projects', this.projectsCache);
                 this.saveTimeout = null;
             }, 1000);
         }
     },
-    async syncToSheets(projects) {
+    async syncAllToSheets() {
+        if (!this.WEB_APP_URL || this.WEB_APP_URL.includes("YOUR_WEB_APP_URL_HERE")) return;
+        try {
+            const payload = {
+                action: 'save_all',
+                payload: {
+                    projects: this.projectsCache || this.getProjects(),
+                    projectTypes: PROJECT_TYPES || this.getProjectTypes(),
+                    subItems: this.getSubItems(),
+                    regionalOffices: REGIONAL_OFFICES || this.getRegionalOffices(),
+                    units: this.getUnits(),
+                    users: this.getUsers()
+                }
+            };
+            fetch(this.WEB_APP_URL, {
+                method: 'POST',
+                body: JSON.stringify(payload),
+                headers: { "Content-Type": "text/plain;charset=utf-8" }
+            }).catch(console.error);
+        } catch (e) { console.error(e); }
+    },
+    async syncToSheets(sheetKey, sheetData) {
+        if (!this.WEB_APP_URL || this.WEB_APP_URL.includes("YOUR_WEB_APP_URL_HERE")) return;
         try {
             fetch(this.WEB_APP_URL, {
                 method: 'POST',
                 body: JSON.stringify({
-                    action: 'save_projects',
-                    projects: projects
+                    action: 'save_sheet',
+                    sheetKey: sheetKey,
+                    payload: sheetData
                 }),
                 headers: {
                     "Content-Type": "text/plain;charset=utf-8" // use plain string post over JSON to avoid CORS preflight
@@ -242,7 +295,7 @@ const DB = {
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        console.log('DB: ซิงค์ข้อมูลไปยัง Google Sheets สำเร็จ');
+                        // console.log(`DB: ซิงค์ข้อมูล ${sheetKey} ไปยัง Google Sheets สำเร็จ`);
                     } else {
                         console.error('DB: เว็บแอปรายงานข้อผิดพลาด:', data.error || data.message);
                     }
@@ -412,6 +465,7 @@ const DB = {
     saveProjectTypes(types) {
         PROJECT_TYPES = types;
         localStorage.setItem('pb_project_types', JSON.stringify(types));
+        this.syncToSheets('projectTypes', types);
     },
     addProjectType(type) {
         const types = this.getProjectTypes();
@@ -451,6 +505,7 @@ const DB = {
     },
     saveSubItems(subs) {
         localStorage.setItem('pb_sub_items', JSON.stringify(subs));
+        this.syncToSheets('subItems', subs);
     },
     getSubItemsForType(typeId) {
         const subs = this.getSubItems();
@@ -495,6 +550,7 @@ const DB = {
     saveRegionalOffices(offices) {
         localStorage.setItem('pb_regional_offices', JSON.stringify(offices));
         REGIONAL_OFFICES = offices;
+        this.syncToSheets('regionalOffices', offices);
     },
     addRegionalOffice(name) {
         const offices = this.getRegionalOffices();
@@ -541,6 +597,7 @@ const DB = {
     },
     saveUnits(units) {
         localStorage.setItem('pb_units', JSON.stringify(units));
+        this.syncToSheets('units', units);
     },
     getUnitsForOffice(officeName) {
         const units = this.getUnits();
@@ -578,6 +635,7 @@ const DB = {
     },
     saveUsers(users) {
         localStorage.setItem('pb_users', JSON.stringify(users));
+        this.syncToSheets('users', users);
     },
     addUser(userData) {
         const users = this.getUsers();
