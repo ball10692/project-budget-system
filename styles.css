@@ -609,6 +609,10 @@ tbody td {
   font-size: 13px;
 }
 
+.txt-muted {
+  color: var(--text-muted);
+}
+
 /* ===== STATUS BADGES ===== */
 .badge {
   display: inline-flex;

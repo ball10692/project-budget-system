@@ -201,16 +201,15 @@ const ExcelUtils = {
             return;
         }
 
-        let filteredProjects = projects;
-
         const wb = XLSX.utils.book_new();
 
-        // Summary sheet
+        // 1. Summary sheet (Keep as is or slightly adjust)
         let title = 'รายงานสรุปโครงการทั้งหมด';
         if (officeFilter && unitFilter) title = `รายงานสรุปโครงการ - ${officeFilter} (${unitFilter})`;
         else if (officeFilter) title = `รายงานสรุปโครงการ - ${officeFilter}`;
         else if (unitFilter) title = `รายงานสรุปโครงการ - ${unitFilter}`;
         if (roundLabel) title += roundLabel;
+
         const summaryData = [
             [title],
             [`วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}`],
@@ -233,14 +232,17 @@ const ExcelUtils = {
             green: 'เขียว (ผ่านการพิจารณา)',
             adjust: 'ปรับประมาณการ',
             docs: 'ส่งเอกสารเพิ่มเติม',
+            clarify: 'ชี้แจงโครงการใหม่',
             red: 'แดง (ไม่ผ่านการพิจารณา)',
+            'pending': 'รอการพิจารณา',
             '': 'รอการพิจารณา'
         };
 
-        Object.entries(statusLabels).forEach(([key, label]) => {
-            const sp = projects.filter(p => p.reviewStatus === key);
+        const statusKeys = ['pending', 'green', 'adjust', 'docs', 'clarify', 'red'];
+        statusKeys.forEach(key => {
+            const sp = projects.filter(p => (p.reviewStatus || 'pending') === key);
             const sb = sp.reduce((s, p) => s + Number(p.budget || 0), 0);
-            summaryData.push([label, sp.length, sb]);
+            summaryData.push([statusLabels[key], sp.length, sb]);
         });
 
         summaryData.push(['']);
@@ -250,33 +252,45 @@ const ExcelUtils = {
         wsSummary['!cols'] = [{ wch: 40 }, { wch: 18 }, { wch: 22 }];
         XLSX.utils.book_append_sheet(wb, wsSummary, 'สรุปภาพรวม');
 
-        // Detail sheet
+        // 2. Detail sheet (Redesigned)
         const detailHeaders = [
-            'รหัส', 'ประเภทงาน', 'รายการย่อย', 'มิติงาน',
+            'รายการย่อย', 'มิติงาน',
             'หมู่', 'บ้าน', 'ตำบล', 'อำเภอ', 'จังหวัด',
-            'ปริมาณงาน', 'หน่วยนับ', 'งบประมาณ (บาท)',
-            'ประเภทงบประมาณ', 'สำนักงานภาค', 'หน่วย',
-            'สถานะการพิจารณา', 'ข้อคิดเห็น'
+            'ปริมาณ', 'หน่วยนับ', 'งบประมาณ (บาท)',
+            'ประเภทงบประมาณ', 'ภาค', 'หน่วย',
+            'สถานะ', 'ข้อคิดเห็นของคณะกรรมการ', 'ครั้งที่'
         ];
 
-        const typeLabels = {};
-        PROJECT_TYPES.forEach(t => { typeLabels[t.id] = t.label; });
-
         const detailRows = projects.map(p => [
-            p.id, typeLabels[p.type] || p.type, p.subItem, p.dimension,
-            p.moo, p.village, p.tambon, p.amphoe, p.province,
-            p.quantity, p.unit, p.budget, p.budgetType, p.regionalOffice, p.unitOrg,
-            statusLabels[p.reviewStatus] || 'รอการพิจารณา', p.comment
+            p.subItem,
+            p.dimension || '-',
+            p.moo || '',
+            p.village || '',
+            p.tambon || '',
+            p.amphoe || '',
+            p.province || '',
+            p.quantity || 0,
+            p.unit || '',
+            p.budget || 0,
+            p.budgetType || '',
+            p.regionalOffice || '',
+            p.unitOrg || '',
+            statusLabels[p.reviewStatus || 'pending'],
+            p.comment || '',
+            p.round || 1
         ]);
 
         const wsDetail = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailRows]);
+
+        // Adjust column widths
         wsDetail['!cols'] = [
-            { wch: 8 }, { wch: 35 }, { wch: 40 }, { wch: 28 },
-            { wch: 6 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
-            { wch: 12 }, { wch: 10 }, { wch: 18 },
-            { wch: 24 }, { wch: 20 }, { wch: 22 },
-            { wch: 28 }, { wch: 40 }
+            { wch: 45 }, { wch: 30 },
+            { wch: 8 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 18 },
+            { wch: 12 }, { wch: 12 }, { wch: 20 },
+            { wch: 25 }, { wch: 20 }, { wch: 22 },
+            { wch: 30 }, { wch: 45 }, { wch: 10 }
         ];
+
         XLSX.utils.book_append_sheet(wb, wsDetail, 'รายละเอียดโครงการ');
 
         let filename = 'รายงานสรุปโครงการ';

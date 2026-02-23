@@ -82,7 +82,7 @@ const REVIEW_STATUSES = [
 // Sample data
 const SAMPLE_PROJECTS = [
     {
-        id: 'P001', type: 'งานก่อสร้างเส้นทางคมนาคม', subItem: 'ถนนลาดยางสายบ้านดอน-บ้านนา',
+        id: 'P001', fiscalYear: 2571, type: 'งานก่อสร้างเส้นทางคมนาคม', subItem: 'ถนนลาดยางสายบ้านดอน-บ้านนา',
         dimension: 'กว้าง 6 ม. ยาว 2,500 ม.',
         moo: '3', village: 'บ้านดอน', tambon: 'ดอนแร่', amphoe: 'เมือง', province: 'ราชบุรี',
         quantity: 2500, unit: 'เมตร', unitOrg: 'กองพัน ทพ.11',
@@ -90,7 +90,7 @@ const SAMPLE_PROJECTS = [
         reviewStatus: 'green', comment: '', createdAt: '2026-01-15'
     },
     {
-        id: 'P002', type: 'งานจัดหาน้ำกินน้ำใช้', subItem: 'ระบบประปาหมู่บ้านหนองแค',
+        id: 'P002', fiscalYear: 2571, type: 'งานจัดหาน้ำกินน้ำใช้', subItem: 'ระบบประปาหมู่บ้านหนองแค',
         dimension: 'ขนาด 10 ลบ.ม./ชม.',
         moo: '5', village: 'หนองแค', tambon: 'หนองแค', amphoe: 'บ้านโป่ง', province: 'ราชบุรี',
         quantity: 1, unit: 'ระบบ', unitOrg: 'กองพัน ทพ.12',
@@ -98,7 +98,7 @@ const SAMPLE_PROJECTS = [
         reviewStatus: 'adjust', comment: 'ขอให้ปรับลดงบประมาณค่าวัสดุ 10%', createdAt: '2026-01-16'
     },
     {
-        id: 'P003', type: 'งานพัฒนาและช่วยเหลือประชาชน', subItem: 'โครงการฝึกอาชีพสตรี',
+        id: 'P003', fiscalYear: 2571, type: 'งานพัฒนาและช่วยเหลือประชาชน', subItem: 'โครงการฝึกอาชีพสตรี',
         dimension: '-',
         moo: '2', village: 'บ้านท่า', tambon: 'โพธาราม', amphoe: 'โพธาราม', province: 'ราชบุรี',
         quantity: 50, unit: 'คน', unitOrg: 'กองพัน ทพ.13',
@@ -106,7 +106,7 @@ const SAMPLE_PROJECTS = [
         reviewStatus: 'green', comment: '', createdAt: '2026-01-17'
     },
     {
-        id: 'P004', type: 'งานเกษตรผสมผสาน', subItem: 'ส่งเสริมการปลูกพืชผสมผสาน',
+        id: 'P004', fiscalYear: 2571, type: 'งานเกษตรผสมผสาน', subItem: 'ส่งเสริมการปลูกพืชผสมผสาน',
         dimension: 'พื้นที่ 100 ไร่',
         moo: '7', village: 'บ้านเขาแดง', tambon: 'ปากท่อ', amphoe: 'ปากท่อ', province: 'ราชบุรี',
         quantity: 100, unit: 'ไร่', unitOrg: 'กองพัน ทพ.14',
@@ -114,7 +114,7 @@ const SAMPLE_PROJECTS = [
         reviewStatus: 'docs', comment: 'ขอเอกสารแผนที่แปลงเกษตรเพิ่มเติม', createdAt: '2026-01-18'
     },
     {
-        id: 'P005', type: 'งานก่อสร้างเส้นทางคมนาคม', subItem: 'ซ่อมแซมถนนคอนกรีตสายหลัก',
+        id: 'P005', fiscalYear: 2571, type: 'งานก่อสร้างเส้นทางคมนาคม', subItem: 'ซ่อมแซมถนนคอนกรีตสายหลัก',
         dimension: 'กว้าง 4 ม. ยาว 800 ม.',
         moo: '1', village: 'บ้านจอม', tambon: 'จอมบึง', amphoe: 'จอมบึง', province: 'ราชบุรี',
         quantity: 800, unit: 'เมตร', unitOrg: 'กองพัน ทพ.15',
@@ -122,7 +122,7 @@ const SAMPLE_PROJECTS = [
         reviewStatus: 'red', comment: 'งบประมาณสูงเกินความจำเป็น ขอให้ทบทวนใหม่', createdAt: '2026-01-19'
     },
     {
-        id: 'P006', type: 'งานจัดหาน้ำกินน้ำใช้', subItem: 'ขุดเจาะบ่อน้ำบาดาล',
+        id: 'P006', fiscalYear: 2571, type: 'งานจัดหาน้ำกินน้ำใช้', subItem: 'ขุดเจาะบ่อน้ำบาดาล',
         dimension: 'ลึก 80 เมตร',
         moo: '4', village: 'บ้านสวน', tambon: 'สวนผึ้ง', amphoe: 'สวนผึ้ง', province: 'ราชบุรี',
         quantity: 3, unit: 'บ่อ', unitOrg: 'กองพัน ทพ.16',
@@ -130,7 +130,7 @@ const SAMPLE_PROJECTS = [
         reviewStatus: '', comment: '', createdAt: '2026-01-20'
     },
     {
-        id: 'P007', type: 'งานเกษตรผสมผสาน', subItem: 'โครงการเลี้ยงปลาในบ่อดิน',
+        id: 'P007', fiscalYear: 2571, type: 'งานเกษตรผสมผสาน', subItem: 'โครงการเลี้ยงปลาในบ่อดิน',
         dimension: 'บ่อขนาด 1 ไร่',
         moo: '6', village: 'บ้านนา', tambon: 'เมือง', amphoe: 'เมือง', province: 'ราชบุรี',
         quantity: 5, unit: 'บ่อ', unitOrg: 'กองพัน ทพ.11',
@@ -138,7 +138,7 @@ const SAMPLE_PROJECTS = [
         reviewStatus: 'green', comment: '', createdAt: '2026-01-21'
     },
     {
-        id: 'P008', type: 'งานพัฒนาและช่วยเหลือประชาชน', subItem: 'ก่อสร้างศาลาประชาคม',
+        id: 'P008', fiscalYear: 2571, type: 'งานพัฒนาและช่วยเหลือประชาชน', subItem: 'ก่อสร้างศาลาประชาคม',
         dimension: 'ขนาด 8x12 ม.',
         moo: '9', village: 'บ้านโป่ง', tambon: 'บ้านโป่ง', amphoe: 'บ้านโป่ง', province: 'ราชบุรี',
         quantity: 1, unit: 'หลัง', unitOrg: 'กองพัน ทพ.12',
@@ -603,6 +603,10 @@ const DB = {
     getUnitsForOffice(officeName) {
         const units = this.getUnits();
         return units[officeName] || [];
+    },
+    getAllUnits() {
+        const units = this.getUnits();
+        return [...new Set(Object.values(units).flat())].sort();
     },
     addUnit(officeName, unitName) {
         const units = this.getUnits();

@@ -159,8 +159,8 @@ function statusBadge(status) {
 
 function typeBadge(typeId) {
   const t = PROJECT_TYPES.find(x => x.id === typeId);
-  if (!t) return typeId;
-  return `<span class="badge type-${typeId}">${typeIcon(typeId)} ${t.label}</span>`;
+  if (!t) return `<span class="badge type-${typeId}">${typeIcon(typeId)} ${typeId}</span>`;
+  return `<span class="badge type-${typeId}" style="border-color:${t.color}; color:${t.color}; background:${t.color}10;">${typeIcon(typeId)} ${t.label}</span>`;
 }
 
 function renderStatusDonut(byStatus, total) {
@@ -230,19 +230,67 @@ function renderAgencyTable(byAgency) {
 function initDashboardFilters() {
   const agSel = document.getElementById('dashAgencyFilter');
   const typeSel = document.getElementById('dashTypeFilter');
-  const offices = DB.getAgencies();
 
-  // Role-based filtering constraints
-  if (currentUser && currentUser.role === 'user') {
-    agSel.innerHTML = `<option value="${currentUser.responsibility}">${currentUser.responsibility}</option>`;
-    agSel.disabled = true;
-  } else {
-    agSel.innerHTML = '<option value="">ทุกสำนักงานภาค</option>' + offices.map(a => `<option value="${a}">${a}</option>`).join('');
-    agSel.disabled = false;
-  }
+  const rebuildDashboardFilters = () => {
+    const projects = DB.getProjects();
+    const currentAg = agSel.value;
+    const currentType = typeSel.value;
 
-  typeSel.innerHTML = '<option value="">ทุกประเภทงาน</option>' + PROJECT_TYPES.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
-  agSel.onchange = typeSel.onchange = renderDashboard;
+    const masterOffices = DB.getRegionalOffices();
+    const masterTypes = PROJECT_TYPES;
+
+    // Calculate available Agencies (ignoring Agency filter)
+    let agencyProjects = projects;
+    if (currentType) agencyProjects = agencyProjects.filter(p => p.type === currentType);
+    const availableAgencies = [...new Set(agencyProjects.map(p => p.regionalOffice).filter(Boolean))];
+
+    // Calculate available Types (ignoring Type filter)
+    let typeProjects = projects;
+    let effectiveAgency = agSel.value;
+    if (currentUser && currentUser.role === 'user') effectiveAgency = currentUser.responsibility;
+    if (effectiveAgency) typeProjects = typeProjects.filter(p => p.regionalOffice === effectiveAgency);
+    const availableTypes = [...new Set(typeProjects.map(p => p.type).filter(Boolean))];
+
+    // Build Master Lists fallback if empty
+    let useMasterOffices = masterOffices;
+    if (!useMasterOffices || useMasterOffices.length === 0) useMasterOffices = [...new Set(projects.map(p => p.regionalOffice).filter(Boolean))];
+
+    let useMasterTypes = masterTypes;
+    if (!useMasterTypes || useMasterTypes.length === 0) useMasterTypes = [...new Set(projects.map(p => p.type).filter(Boolean))].map(t => ({ id: t, label: t }));
+
+    // Update Agency Select
+    if (currentUser && currentUser.role === 'user') {
+      agSel.innerHTML = `<option value="${currentUser.responsibility}">${currentUser.responsibility}</option>`;
+      agSel.disabled = true;
+    } else {
+      agSel.innerHTML = '<option value="">ทุกสำนักงานภาค</option>' + useMasterOffices.map(a => {
+        const count = availableAgencies.includes(a) ? 1 : 0;
+        const disabledAttr = count === 0 ? 'class="txt-muted"' : '';
+        const label = count === 0 ? `${a} (0)` : a;
+        return `<option value="${a}" ${disabledAttr}>${label}</option>`;
+      }).join('');
+      agSel.disabled = false;
+      if (currentAg && useMasterOffices.includes(currentAg)) agSel.value = currentAg;
+      else agSel.value = "";
+    }
+
+    // Update Type Select
+    typeSel.innerHTML = '<option value="">ทุกประเภทงาน</option>' + useMasterTypes.map(tObj => {
+      const t = tObj.id;
+      const count = availableTypes.includes(t) ? 1 : 0;
+      const disabledAttr = count === 0 ? 'class="txt-muted"' : '';
+      const label = count === 0 ? `${tObj.label} (0)` : tObj.label;
+      return `<option value="${t}" ${disabledAttr}>${label}</option>`;
+    }).join('');
+    if (currentType && useMasterTypes.find(tObj => tObj.id === currentType)) typeSel.value = currentType;
+    else typeSel.value = "";
+  };
+
+  // Initial build
+  rebuildDashboardFilters();
+
+  agSel.addEventListener('change', () => { rebuildDashboardFilters(); renderDashboard(); });
+  typeSel.addEventListener('change', () => { rebuildDashboardFilters(); renderDashboard(); });
 }
 
 // ---- Utility: Get Filtered Projects ----
@@ -312,87 +360,178 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
   const fySel = fiscalYearId ? document.getElementById(fiscalYearId) : null;
   const typeSel = typeId ? document.getElementById(typeId) : null;
   const budgetTypeSel = budgetTypeId ? document.getElementById(budgetTypeId) : null;
+  const statusSel = statusId ? document.getElementById(statusId) : null;
 
   if (!agSel || !unitSel || !searchIn) return;
 
-  // Populate Agencies
-  const offices = DB.getAgencies();
-  agSel.innerHTML = '<option value="">ทุกสำนักงานภาค</option>' + offices.map(a => `<option value="${a}">${a}</option>`).join('');
-
-  // Populate Fiscal Year
-  if (fySel) {
-    populateFiscalYearFilter(fiscalYearId);
-    fySel.addEventListener('change', renderFunc);
-  }
-
-  // Populate Types & Budget Types dynamically based on existing data
-  if (typeSel) {
-    const types = [...new Set(DB.getProjects().map(p => p.type).filter(Boolean))].sort();
-    const currentType = typeSel.value;
-    // We already have hardcoded `<option value="">ทุกประเภท</option>` in HTML
-    let optionsHtml = '<option value="">ทุกประเภท</option>';
-    types.forEach(t => {
-      const typeObj = PROJECT_TYPES.find(pt => pt.id === t);
-      const label = typeObj ? typeObj.label : t;
-      optionsHtml += `<option value="${t}">${label}</option>`;
-    });
-    typeSel.innerHTML = optionsHtml;
-
-    if (types.includes(currentType)) typeSel.value = currentType;
-    typeSel.addEventListener('change', renderFunc);
-  }
-
-  if (budgetTypeSel) {
-    const budgetTypes = [...new Set(DB.getProjects().map(p => p.budgetType).filter(Boolean))].sort();
-    const currentBudgetType = budgetTypeSel.value;
-    budgetTypeSel.innerHTML = '<option value="">ทุกประเภทงบ</option>' + budgetTypes.map(b => `<option value="${b}">${b}</option>`).join('');
-    if (budgetTypes.includes(currentBudgetType)) budgetTypeSel.value = currentBudgetType;
-    budgetTypeSel.addEventListener('change', renderFunc);
-  }
-
-  const statusSel = statusId ? document.getElementById(statusId) : null;
-  if (statusSel) {
-    const currentStatus = statusSel.value;
-    let statusHtml = '<option value="">ทุกสถานะ</option>';
-    REVIEW_STATUSES.forEach(s => {
-      statusHtml += `<option value="${s.id}">${s.icon} ${s.label}</option>`;
-    });
-    statusSel.innerHTML = statusHtml;
-    if (currentStatus) statusSel.value = currentStatus;
-    statusSel.addEventListener('change', renderFunc);
-  }
-
-  // Populate Units (dynamic based on selection)
-  const updateUnits = () => {
-    let projects = DB.getProjects();
-    const effectiveAgency = (currentUser && currentUser.role === 'user') ? currentUser.responsibility : agSel.value;
-
-    if (effectiveAgency) {
-      projects = projects.filter(p => p.regionalOffice === effectiveAgency);
-    }
-    const units = [...new Set(projects.map(p => p.unitOrg).filter(Boolean))].sort();
-    const currentUnit = unitSel.value;
-    unitSel.innerHTML = '<option value="">ทุกหน่วย</option>' + units.map(u => `<option value="${u}">${u}</option>`).join('');
-    if (units.includes(currentUnit)) unitSel.value = currentUnit;
+  // Helper to safely get value and handle user constraint
+  const getFilterVal = (id) => {
+    if (id === agencyId && currentUser && currentUser.role === 'user') return currentUser.responsibility;
+    return document.getElementById(id) ? document.getElementById(id).value : '';
   };
 
-  updateUnits();
+  const rebuildFilters = () => {
+    const allProjects = DB.getProjects();
+    const currentVals = {
+      agency: getFilterVal(agencyId),
+      unit: getFilterVal(unitId),
+      fy: fiscalYearId ? getFilterVal(fiscalYearId) : '',
+      type: typeId ? getFilterVal(typeId) : '',
+      budget: budgetTypeId ? getFilterVal(budgetTypeId) : '',
+      status: statusId ? getFilterVal(statusId) : ''
+    };
 
-  // Role-based logic for initPageFilters
-  if (currentUser && currentUser.role === 'user') {
-    agSel.value = currentUser.responsibility;
-    agSel.disabled = true;
-    updateUnits();
-  } else {
-    agSel.disabled = false;
+    // Helper: filter projects ignoring ONE specific field
+    const getSubset = (ignoreField) => {
+      let filtered = allProjects.filter(p => {
+        if (ignoreField !== 'fy' && currentVals.fy && String(p.fiscalYear) !== currentVals.fy) return false;
+        if (ignoreField !== 'agency' && currentVals.agency && p.regionalOffice !== currentVals.agency) return false;
+        if (ignoreField !== 'unit' && currentVals.unit && p.unitOrg !== currentVals.unit) return false;
+        if (ignoreField !== 'type' && currentVals.type && p.type !== currentVals.type) return false;
+        if (ignoreField !== 'budget' && currentVals.budget && p.budgetType !== currentVals.budget) return false;
+        if (ignoreField !== 'status' && currentVals.status) {
+          if (currentVals.status === 'pending') { if (p.reviewStatus && p.reviewStatus !== 'pending') return false; }
+          else { if (p.reviewStatus !== currentVals.status) return false; }
+        }
+        return true;
+      });
+      return filtered;
+    };
+
+    // Master lists with fallbacks
+    let masterOffices = DB.getRegionalOffices();
+    if (!masterOffices || masterOffices.length === 0) masterOffices = [...new Set(allProjects.map(p => p.regionalOffice).filter(Boolean))].sort();
+
+    let masterUnits = currentVals.agency ? DB.getUnitsForOffice(currentVals.agency) : DB.getAllUnits();
+    if (!masterUnits || masterUnits.length === 0) masterUnits = [...new Set(allProjects.map(p => p.unitOrg).filter(Boolean))].sort();
+
+    let masterTypes = PROJECT_TYPES;
+    if (!masterTypes || masterTypes.length === 0) masterTypes = [...new Set(allProjects.map(p => p.type).filter(Boolean))].map(t => ({ id: t, label: t }));
+
+    const budgetTypes = BUDGET_TYPES;
+    // Derive Master FY from all projects + current year as default
+    const currentBE = new Date().getFullYear() + 543;
+    const defaultFys = [currentBE - 1, currentBE, currentBE + 1, currentBE + 2];
+    const dbFys = [...new Set(allProjects.map(p => p.fiscalYear).filter(Boolean))];
+    const masterFy = [...new Set([...defaultFys, ...dbFys])].sort((a, b) => a - b);
+
+    // Filter helper with error safety
+    const safeInclude = (arr, val) => arr && arr.includes(val);
+
+    // 1. Rebuild Agencies
+    if (!currentUser || currentUser.role !== 'user') {
+      const agencySubset = getSubset('agency');
+      const availableAgencies = [...new Set(agencySubset.map(p => p.regionalOffice).filter(Boolean))];
+      agSel.innerHTML = '<option value="">ทุกสำนักงานภาค</option>' + masterOffices.map(a => {
+        const count = availableAgencies.includes(a) ? 1 : 0;
+        const cls = count === 0 ? 'class="txt-muted"' : '';
+        const label = count === 0 ? `${a} (0)` : a;
+        return `<option value="${a}" ${cls}>${label}</option>`;
+      }).join('');
+      if (currentVals.agency && masterOffices.includes(currentVals.agency)) agSel.value = currentVals.agency;
+      else agSel.value = "";
+    } else {
+      agSel.innerHTML = `<option value="${currentUser.responsibility}">${currentUser.responsibility}</option>`;
+      agSel.disabled = true;
+    }
+
+    // 2. Rebuild Units
+    const unitSubset = getSubset('unit');
+    const availableUnits = [...new Set(unitSubset.map(p => p.unitOrg).filter(Boolean))];
+    unitSel.innerHTML = '<option value="">ทุกหน่วย</option>' + masterUnits.map(u => {
+      const count = availableUnits.includes(u) ? 1 : 0;
+      const cls = count === 0 ? 'class="txt-muted"' : '';
+      const label = count === 0 ? `${u} (0)` : u;
+      return `<option value="${u}" ${cls}>${label}</option>`;
+    }).join('');
+    if (currentVals.unit && masterUnits.includes(currentVals.unit)) unitSel.value = currentVals.unit;
+    else unitSel.value = "";
+
+    // 3. Rebuild Fiscal Year
+    if (fySel) {
+      const fySubset = getSubset('fy');
+      const availableFys = [...new Set(fySubset.map(p => p.fiscalYear).filter(Boolean))];
+      fySel.innerHTML = '<option value="">ทุกปีงบประมาณ</option>' + masterFy.map(y => {
+        const count = availableFys.includes(y) ? 1 : 0;
+        const cls = count === 0 ? 'class="txt-muted"' : '';
+        const label = count === 0 ? `พ.ศ. ${y} (0)` : `พ.ศ. ${y}`;
+        return `<option value="${y}" ${cls}>${label}</option>`;
+      }).join('');
+      if (currentVals.fy && masterFy.map(String).includes(currentVals.fy)) fySel.value = currentVals.fy;
+      else fySel.value = "";
+    }
+
+    // 4. Rebuild Types
+    if (typeSel) {
+      const typeSubset = getSubset('type');
+      const availableTypes = [...new Set(typeSubset.map(p => p.type).filter(Boolean))];
+      typeSel.innerHTML = '<option value="">ทุกประเภทงาน</option>' + masterTypes.map(tObj => {
+        const t = tObj.id;
+        const count = availableTypes.includes(t) ? 1 : 0;
+        const cls = count === 0 ? 'class="txt-muted"' : '';
+        const label = count === 0 ? `${tObj.label} (0)` : tObj.label;
+        return `<option value="${t}" ${cls}>${label}</option>`;
+      }).join('');
+      if (currentVals.type && masterTypes.find(tObj => tObj.id === currentVals.type)) typeSel.value = currentVals.type;
+      else typeSel.value = "";
+    }
+
+    // 5. Rebuild Budget Types
+    if (budgetTypeSel) {
+      const budgetSubset = getSubset('budget');
+      const availableBudgets = [...new Set(budgetSubset.map(p => p.budgetType).filter(Boolean))];
+      budgetTypeSel.innerHTML = '<option value="">ทุกประเภทงบ</option>' + budgetTypes.map(b => {
+        const count = availableBudgets.includes(b) ? 1 : 0;
+        const cls = count === 0 ? 'class="txt-muted"' : '';
+        const label = count === 0 ? `${b} (0)` : b;
+        return `<option value="${b}" ${cls}>${label}</option>`;
+      }).join('');
+      if (currentVals.budget && budgetTypes.includes(currentVals.budget)) budgetTypeSel.value = currentVals.budget;
+      else budgetTypeSel.value = "";
+    }
+
+    // 6. Rebuild Statuses
+    if (statusSel) {
+      const statusSubset = getSubset('status');
+      const availableStatuses = [...new Set(statusSubset.map(p => p.reviewStatus || 'pending'))];
+
+      statusSel.innerHTML = '<option value="">ทุกสถานะ</option>' + REVIEW_STATUSES.map(s => {
+        const count = availableStatuses.includes(s.id) ? 1 : 0;
+        const cls = count === 0 ? 'class="txt-muted"' : '';
+        const label = count === 0 ? `${s.label} (0)` : s.label;
+        return `<option value="${s.id}" ${cls}>${s.icon} ${label}</option>`;
+      }).join('');
+      if (currentVals.status && REVIEW_STATUSES.find(s => s.id === currentVals.status)) statusSel.value = currentVals.status;
+      else statusSel.value = "";
+    }
+  };
+
+  // Setup Event Listeners
+  const onChangeHandler = () => { rebuildFilters(); renderFunc(); };
+
+  if (!currentUser || currentUser.role !== 'user') {
+    agSel.addEventListener('change', onChangeHandler);
   }
-
-  agSel.addEventListener('change', () => {
-    updateUnits();
-    renderFunc();
-  });
-  unitSel.addEventListener('change', renderFunc);
+  unitSel.addEventListener('change', onChangeHandler);
+  if (fySel) fySel.addEventListener('change', onChangeHandler);
+  if (typeSel) typeSel.addEventListener('change', onChangeHandler);
+  if (budgetTypeSel) budgetTypeSel.addEventListener('change', onChangeHandler);
+  if (statusSel) statusSel.addEventListener('change', onChangeHandler);
   searchIn.addEventListener('input', debounce(renderFunc, 300));
+
+  // Initial build and SMART DEFAULT for Fiscal Year
+  rebuildFilters();
+
+  if (fySel && !fySel.value) {
+    // Default to the latest year that actually has projects
+    const allProjects = DB.getProjects();
+    const availableFys = [...new Set(allProjects.map(p => p.fiscalYear).filter(Boolean))].sort((a, b) => b - a);
+    if (availableFys.length > 0) {
+      fySel.value = availableFys[0];
+      // Trigger update for the newly set default
+      onChangeHandler();
+    }
+  }
 }
 
 // ===== PAGE 2: PROJECTS =====
@@ -401,11 +540,21 @@ let selectedProjectIds = new Set();
 let currentReviewRound = 1; // Default to round 1
 
 // Generate fiscal year options starting from 2571
+// Generate fiscal year options around current year (2569 BE / 2026 AD)
 function generateFiscalYearOptions(selectedYear) {
-  const startYear = 2571;
-  const endYear = startYear + 9; // 10 years
-  return Array.from({ length: endYear - startYear + 1 }, (_, i) => startYear + i)
-    .map(y => `<option value="${y}" ${y === Number(selectedYear) ? 'selected' : ''}>พ.ศ. ${y}</option>`)
+  const currentBE = new Date().getFullYear() + 543;
+  const startYear = currentBE - 2; // e.g., 2567 if current is 2569
+  const endYear = currentBE + 6;   // e.g., 2575
+
+  // Ensure the selected year is included if it's outside the range
+  let years = [];
+  for (let y = startYear; y <= endYear; y++) years.push(y);
+  if (selectedYear && !years.includes(Number(selectedYear))) {
+    years.push(Number(selectedYear));
+    years.sort((a, b) => a - b);
+  }
+
+  return years.map(y => `<option value="${y}" ${y === Number(selectedYear) ? 'selected' : ''}>พ.ศ. ${y}</option>`)
     .join('');
 }
 
@@ -482,6 +631,21 @@ function renderProjectsPage() {
 }
 
 function openProjectModal(mode = 'add', project = null) {
+  const fTypeEl = document.getElementById('fType');
+  const fRegionalOfficeEl = document.getElementById('fRegionalOffice');
+  const fBudgetTypeEl = document.getElementById('fBudgetType');
+
+  // Refresh master dropdowns
+  if (fTypeEl) {
+    fTypeEl.innerHTML = DB.getProjectTypes().map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+  }
+  if (fRegionalOfficeEl) {
+    fRegionalOfficeEl.innerHTML = DB.getRegionalOffices().map(r => `<option value="${r}">${r}</option>`).join('');
+  }
+  if (fBudgetTypeEl) {
+    fBudgetTypeEl.innerHTML = BUDGET_TYPES.map(b => `<option value="${b}">${b}</option>`).join('');
+  }
+
   document.getElementById('projectForm').reset();
   const regSelect = document.getElementById('fRegionalOffice');
   regSelect.disabled = false;
@@ -490,7 +654,6 @@ function openProjectModal(mode = 'add', project = null) {
   const title = document.getElementById('modalTitle');
 
   // Populate sub-item dropdown based on type
-  const fTypeEl = document.getElementById('fType');
   const updateSubItemDropdown = () => {
     const typeId = fTypeEl.value;
     const subItems = DB.getSubItemsForType(typeId);
@@ -512,7 +675,6 @@ function openProjectModal(mode = 'add', project = null) {
   };
 
   // Dynamic unit dropdown based on selected regional office
-  const fRegionalOfficeEl = document.getElementById('fRegionalOffice');
   const updateUnitDropdown = () => {
     const office = fRegionalOfficeEl.value;
     const units = DB.getUnitsForOffice(office);
@@ -520,8 +682,28 @@ function openProjectModal(mode = 'add', project = null) {
     fUnitOrg.innerHTML = '<option value="">-- เลือกหน่วย --</option>' +
       units.map(u => `<option value="${u}">${u}</option>`).join('');
   };
-  fRegionalOfficeEl.onchange = updateUnitDropdown;
+
+  // Live Title Update
+  const updateModalTitle = () => {
+    const typeLabel = fTypeEl.options[fTypeEl.selectedIndex]?.text || '';
+    const officeLabel = fRegionalOfficeEl.value || '';
+    const modeText = mode === 'edit' ? 'แก้ไขโครงการ' : 'เพิ่มโครงการใหม่';
+    const idText = project ? ` ${project.id}` : '';
+    title.textContent = `${modeText}${idText}: ${typeLabel} ${officeLabel ? `(${officeLabel})` : ''}`;
+  };
+
+  fTypeEl.onchange = () => {
+    updateSubItemDropdown();
+    updateModalTitle();
+  };
+  fRegionalOfficeEl.onchange = () => {
+    updateUnitDropdown();
+    updateModalTitle();
+  };
+
+  updateSubItemDropdown();
   updateUnitDropdown();
+  updateModalTitle();
 
   if (mode === 'edit' && project) {
     editingProjectId = project.id;
@@ -888,7 +1070,23 @@ function renderReviewPage() {
   displayProjects.forEach(p => {
     updateStatusOptionStyles(p.id);
     const radios = document.querySelectorAll(`input[name="status-${p.id}"]`);
-    radios.forEach(r => r.addEventListener('change', () => updateStatusOptionStyles(p.id)));
+    radios.forEach(r => r.addEventListener('change', () => {
+      const statusId = r.value;
+      const statusInfo = REVIEW_STATUSES.find(s => s.id === statusId);
+      const card = document.getElementById(`rc-${p.id}`);
+      const badge = card?.querySelector('.review-status-badge');
+
+      if (card && statusInfo) {
+        card.style.borderLeftColor = statusInfo.color;
+      }
+      if (badge && statusInfo) {
+        badge.style.color = statusInfo.color;
+        badge.style.background = `${statusInfo.color}20`;
+        badge.style.borderColor = `${statusInfo.color}40`;
+        badge.innerHTML = `${statusInfo.icon} ${statusInfo.label}`;
+      }
+      updateStatusOptionStyles(p.id);
+    }));
   });
 }
 
@@ -1073,46 +1271,105 @@ function renderReportPage() {
   const unitSel = document.getElementById('reportUnitFilter');
   const roundSel = document.getElementById('reportRoundFilter');
 
-  // Populate Fiscal Year
-  populateFiscalYearFilter('reportFiscalYearFilter');
+  const rebuildReportFilters = () => {
+    const allProjects = DB.getProjects();
+    const currentVals = {
+      fy: fySel.value,
+      agency: agSel.value,
+      unit: unitSel.value,
+      round: roundSel.value
+    };
 
-  // Populate Agencies
-  const offices = DB.getAgencies();
-  const currentAg = agSel.value;
-  agSel.innerHTML = '<option value="">ภาพรวมทั้งหมด</option>' + offices.map(a => `<option value="${a}">${a}</option>`).join('');
-  if (offices.includes(currentAg)) agSel.value = currentAg;
+    const getSubset = (ignoreField) => {
+      let filtered = allProjects.filter(p => {
+        if (ignoreField !== 'fy' && currentVals.fy && String(p.fiscalYear) !== currentVals.fy) return false;
+        if (ignoreField !== 'agency' && currentVals.agency && p.regionalOffice !== currentVals.agency) return false;
+        if (ignoreField !== 'unit' && currentVals.unit && p.unitOrg !== currentVals.unit) return false;
+        if (ignoreField !== 'round' && currentVals.round && String(p.round || 1) !== currentVals.round) return false;
+        return true;
+      });
+      return filtered;
+    };
 
-  // Populate Rounds
-  const maxRound = getMaxRound(DB.getProjects());
-  const currentRound = roundSel.value;
-  roundSel.innerHTML = '<option value="">ทุกรอบการพิจารณา</option>' +
-    Array.from({ length: maxRound }, (_, i) => i + 1).map(r =>
-      `<option value="${r}">ครั้งที่ ${r}</option>`
-    ).join('');
-  if (currentRound) roundSel.value = currentRound;
+    let masterOffices = DB.getRegionalOffices();
+    if (!masterOffices || masterOffices.length === 0) masterOffices = [...new Set(allProjects.map(p => p.regionalOffice).filter(Boolean))].sort();
 
-  // Populate Units (dynamic)
-  const updateUnits = () => {
-    let projects = DB.getProjects();
-    if (agSel.value) {
-      projects = projects.filter(p => p.regionalOffice === agSel.value);
+    const currentBE = new Date().getFullYear() + 543;
+    const defaultFys = [currentBE - 1, currentBE, currentBE + 1, currentBE + 2];
+    const dbFys = [...new Set(allProjects.map(p => p.fiscalYear).filter(Boolean))];
+    const masterFy = [...new Set([...defaultFys, ...dbFys])].sort((a, b) => a - b);
+    const masterRounds = [...new Set(allProjects.map(p => p.round || 1))];
+    if (masterRounds.length === 0) masterRounds.push(1);
+    masterRounds.sort((a, b) => a - b);
+
+    // 1. Rebuild FY
+    const fySubset = getSubset('fy');
+    const availableFys = [...new Set(fySubset.map(p => p.fiscalYear).filter(Boolean))];
+    fySel.innerHTML = '<option value="">ทุกปีงบประมาณ</option>' + masterFy.map(y => {
+      const count = availableFys.includes(y) ? 1 : 0;
+      const cls = count === 0 ? 'class="txt-muted"' : '';
+      const label = count === 0 ? `พ.ศ. ${y} (0)` : `พ.ศ. ${y}`;
+      return `<option value="${y}" ${cls}>${label}</option>`;
+    }).join('');
+    if (currentVals.fy && masterFy.map(String).includes(currentVals.fy)) fySel.value = currentVals.fy;
+    else fySel.value = "";
+
+    // 2. Rebuild Agency
+    const agSubset = getSubset('agency');
+    const availableAgencies = [...new Set(agSubset.map(p => p.regionalOffice).filter(Boolean))];
+    agSel.innerHTML = '<option value="">ภาพรวมทั้งหมด</option>' + masterOffices.map(a => {
+      const count = availableAgencies.includes(a) ? 1 : 0;
+      const cls = count === 0 ? 'class="txt-muted"' : '';
+      const label = count === 0 ? `${a} (0)` : a;
+      return `<option value="${a}" ${cls}>${label}</option>`;
+    }).join('');
+    if (currentVals.agency && masterOffices.includes(currentVals.agency)) agSel.value = currentVals.agency;
+    else agSel.value = "";
+
+    // 3. Rebuild Unit
+    const unitSubset = getSubset('unit');
+    const availableUnits = [...new Set(unitSubset.map(p => p.unitOrg).filter(Boolean))];
+    unitSel.innerHTML = '<option value="">ทุกหน่วย</option>' + masterUnits.map(u => {
+      const count = availableUnits.includes(u) ? 1 : 0;
+      const cls = count === 0 ? 'class="txt-muted"' : '';
+      const label = count === 0 ? `${u} (0)` : u;
+      return `<option value="${u}" ${cls}>${label}</option>`;
+    }).join('');
+    if (currentVals.unit && masterUnits.includes(currentVals.unit)) unitSel.value = currentVals.unit;
+    else unitSel.value = "";
+
+    // 4. Rebuild Rounds
+    const roundSubset = getSubset('round');
+    const availableRounds = [...new Set(roundSubset.map(p => p.round || 1))];
+    roundSel.innerHTML = '<option value="">ทุกรอบการพิจารณา</option>' + masterRounds.map(r => {
+      const count = availableRounds.includes(r) ? 1 : 0;
+      const cls = count === 0 ? 'class="txt-muted"' : '';
+      const label = count === 0 ? `ครั้งที่ ${r} (0)` : `ครั้งที่ ${r}`;
+      return `<option value="${r}" ${cls}>${label}</option>`;
+    }).join('');
+    if (currentVals.round && masterRounds.map(String).includes(currentVals.round)) roundSel.value = currentVals.round;
+    else roundSel.value = "";
+  };
+
+  const onReportChange = () => { rebuildReportFilters(); updateReportPreview(); };
+
+  fySel.onchange = onReportChange;
+  agSel.onchange = onReportChange;
+  unitSel.onchange = onReportChange;
+  roundSel.onchange = onReportChange;
+
+  // Initial build and SMART DEFAULT
+  rebuildReportFilters();
+
+  if (!fySel.value) {
+    const allProjects = DB.getProjects();
+    const availableFys = [...new Set(allProjects.map(p => p.fiscalYear).filter(Boolean))].sort((a, b) => b - a);
+    if (availableFys.length > 0) {
+      fySel.value = availableFys[0];
+      rebuildReportFilters();
     }
-    const units = [...new Set(projects.map(p => p.unitOrg).filter(Boolean))].sort();
-    const currentUnit = unitSel.value;
-    unitSel.innerHTML = '<option value="">ทุกหน่วย</option>' + units.map(u => `<option value="${u}">${u}</option>`).join('');
-    if (units.includes(currentUnit)) unitSel.value = currentUnit;
-  };
+  }
 
-  fySel.onchange = updateReportPreview;
-  agSel.onchange = () => {
-    updateUnits();
-    updateReportPreview();
-  };
-  unitSel.onchange = updateReportPreview;
-  roundSel.onchange = updateReportPreview;
-
-  // Initial call
-  updateUnits();
   updateReportPreview();
 }
 
@@ -1193,83 +1450,7 @@ function exportReport() {
 }
 
 // ===== INIT =====
-document.addEventListener('DOMContentLoaded', () => {
-  // Set date
-  const now = new Date();
-  document.getElementById('headerDate').textContent = now.toLocaleDateString('th-TH', {
-    year: 'numeric', month: 'long', day: 'numeric'
-  });
 
-  // Init filters
-  initDashboardFilters();
-
-  // Init project form selects
-  const fFiscalYear = document.getElementById('fFiscalYear');
-  fFiscalYear.innerHTML = generateFiscalYearOptions(2571);
-
-  // Init inline fiscal year selector on projects page
-  const fyInline = document.getElementById('fiscalYearSelect');
-  fyInline.innerHTML = generateFiscalYearOptions(2571);
-
-  const fType = document.getElementById('fType');
-  fType.innerHTML = PROJECT_TYPES.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
-
-  const fBudgetType = document.getElementById('fBudgetType');
-  fBudgetType.innerHTML = BUDGET_TYPES.map(b => `<option value="${b}">${b}</option>`).join('');
-
-  const fRegionalOffice = document.getElementById('fRegionalOffice');
-  fRegionalOffice.innerHTML = DB.getRegionalOffices().map(r => `<option value="${r}">${r}</option>`).join('');
-
-  // Tab clicks
-  document.querySelectorAll('.nav-tab').forEach(tab => {
-    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
-  });
-
-  // Render initial page
-  renderDashboard();
-
-  // Init page filters
-  initPageFilters(
-    'projectSearch',
-    'projectAgencyFilter',
-    'projectUnitFilter',
-    renderProjectsPage,
-    'projectFiscalYearFilter',
-    'projectTypeFilter',
-    'projectBudgetTypeFilter'
-  );
-  initPageFilters(
-    'reviewSearch',
-    'reviewAgencyFilter',
-    'reviewUnitFilter',
-    renderReviewPage,
-    'reviewFiscalYearFilter',
-    'reviewTypeFilter',
-    'reviewBudgetTypeFilter',
-    'reviewStatusFilter'
-  );
-
-  // Mobile Menu Logic
-  const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-  const navTabs = document.querySelector('.nav-tabs');
-
-  if (mobileMenuBtn && navTabs) {
-    mobileMenuBtn.addEventListener('click', () => {
-      navTabs.classList.toggle('active');
-    });
-
-    // Close menu when a tab is clicked (on mobile)
-    document.querySelectorAll('.nav-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        if (window.innerWidth <= 600) {
-          navTabs.classList.remove('active');
-        }
-      });
-    });
-  }
-
-
-});
 
 
 
@@ -1880,23 +2061,88 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // --- Start UI Initialization ---
   checkAuth();
 
+  // Set date
+  const dateEl = document.getElementById('headerDate');
+  if (dateEl) {
+    const now = new Date();
+    dateEl.textContent = now.toLocaleDateString('th-TH', {
+      year: 'numeric', month: 'long', day: 'numeric'
+    });
+  }
+
+  // Tab clicks
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.addEventListener('click', (e) => {
       let cur = e.target;
-      while (!cur.classList.contains('nav-tab')) {
+      while (cur && !cur.classList.contains('nav-tab')) {
         cur = cur.parentElement;
       }
-      switchTab(cur.dataset.tab);
+      if (cur) switchTab(cur.dataset.tab);
     });
   });
 
-  // Setup Add Project Button in Projects Tab
-  document.getElementById('addProjectBtn').addEventListener('click', () => {
-    openProjectModal();
-  });
+  // Init project form selects
+  const fFiscalYear = document.getElementById('fFiscalYear');
+  const currentBE = new Date().getFullYear() + 543;
+  if (fFiscalYear) fFiscalYear.innerHTML = generateFiscalYearOptions(currentBE);
 
-  // Render the User table
+  const fyInline = document.getElementById('fiscalYearSelect');
+  if (fyInline) fyInline.innerHTML = generateFiscalYearOptions(currentBE);
+
+  const fType = document.getElementById('fType');
+  if (fType) fType.innerHTML = PROJECT_TYPES.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+
+  const fBudgetType = document.getElementById('fBudgetType');
+  if (fBudgetType) fBudgetType.innerHTML = BUDGET_TYPES.map(b => `<option value="${b}">${b}</option>`).join('');
+
+  const fRegionalOffice = document.getElementById('fRegionalOffice');
+  if (fRegionalOffice) fRegionalOffice.innerHTML = DB.getRegionalOffices().map(r => `<option value="${r}">${r}</option>`).join('');
+
+  // Init filters
+  initDashboardFilters();
+  initPageFilters(
+    'projectSearch',
+    'projectAgencyFilter',
+    'projectUnitFilter',
+    renderProjectsPage,
+    'projectFiscalYearFilter',
+    'projectTypeFilter',
+    'projectBudgetTypeFilter'
+  );
+  initPageFilters(
+    'reviewSearch',
+    'reviewAgencyFilter',
+    'reviewUnitFilter',
+    renderReviewPage,
+    'reviewFiscalYearFilter',
+    'reviewTypeFilter',
+    'reviewBudgetTypeFilter',
+    'reviewStatusFilter'
+  );
+
+  // Render initial page
+  renderDashboard();
+
+  // Mobile Menu Logic
+  const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  const navTabs = document.querySelector('.nav-tabs');
+  if (mobileMenuBtn && navTabs) {
+    mobileMenuBtn.addEventListener('click', () => {
+      navTabs.classList.toggle('active');
+    });
+
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        if (window.innerWidth <= 600) {
+          navTabs.classList.remove('active');
+        }
+      });
+    });
+  }
+
+  // Render secondary pages/stats if needed
   renderUsersPage();
 });
