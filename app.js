@@ -59,14 +59,111 @@ function debounce(func, wait) {
 
 // ---- Toast ----
 function showToast(msg, type = 'info') {
-  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
   const container = document.getElementById('toastContainer');
+  if (!container) return;
   const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<span class="toast-icon">${type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}</span> ${msg}`;
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3200);
+  setTimeout(() => { toast.classList.add('hide'); setTimeout(() => toast.remove(), 300); }, 3000);
 }
+
+// ==== Multi-Select Dropdown Helpers ====
+function toggleMultiSelect(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.classList.toggle('open');
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+  const dropdowns = document.querySelectorAll('.multi-select-dropdown');
+  dropdowns.forEach(dropdown => {
+    if (!dropdown.contains(e.target)) {
+      dropdown.classList.remove('open');
+    }
+  });
+});
+
+function toggleMsOption(e, containerId, value, label) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (e) e.stopPropagation();
+
+  let selected = container.hasAttribute('data-selected')
+    ? container.getAttribute('data-selected').split(',').filter(Boolean)
+    : [];
+
+  let selectedLabels = container.hasAttribute('data-labels')
+    ? container.getAttribute('data-labels').split(',').filter(Boolean)
+    : [];
+
+  const valIdx = selected.indexOf(value);
+  if (valIdx > -1) {
+    selected.splice(valIdx, 1);
+    selectedLabels.splice(valIdx, 1);
+  } else {
+    selected.push(value);
+    selectedLabels.push(label);
+  }
+
+  container.setAttribute('data-selected', selected.join(','));
+  container.setAttribute('data-labels', selectedLabels.join(','));
+
+  // Update UI manually to avoid full rebuild immediately if desired, 
+  // but trigger event will do it anyway
+  updateMsDisplayText(containerId);
+  container.dispatchEvent(new Event('ms-change'));
+}
+
+function clearMsSelection(e, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (e) e.stopPropagation();
+
+  container.setAttribute('data-selected', '');
+  container.setAttribute('data-labels', '');
+
+  updateMsDisplayText(containerId);
+  container.dispatchEvent(new Event('ms-change'));
+}
+
+function updateMsDisplayText(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const textSpan = container.querySelector('.ms-text');
+  if (!textSpan) return;
+
+  const selected = container.hasAttribute('data-selected')
+    ? container.getAttribute('data-selected').split(',').filter(Boolean)
+    : [];
+
+  if (selected.length === 0) {
+    textSpan.textContent = 'ทุกสถานะ';
+    textSpan.innerHTML = 'ทุกสถานะ'; // Clear any HTML from tags
+  } else if (selected.length <= 2) {
+    // Show icons/labels for 1-2 items
+    const allStatuses = [
+      { id: 'pending', label: 'รอการพิจารณา', icon: '⏳' },
+      ...REVIEW_STATUSES
+    ];
+
+    let html = '<div class="ms-tags">';
+    selected.forEach(val => {
+      const sinfo = allStatuses.find(s => s.id === val);
+      if (sinfo) {
+        let sc = sinfo.id === 'green' ? '#10b981' : (sinfo.id === 'red' ? '#ef4444' : (sinfo.id === 'pending' ? '#94a3b8' : '#f59e0b'));
+        html += `<span class="ms-tag" style="color:${sc};border-color:${sc}40;background:${sc}15">${sinfo.icon} ${sinfo.label.split(' ')[0]}</span>`;
+      }
+    });
+    html += '</div>';
+    textSpan.innerHTML = html;
+  } else {
+    textSpan.innerHTML = `<span style="color:#60a5fa;font-weight:500">เลือก ${selected.length} สถานะ</span>`;
+  }
+}
+
 
 // ---- Tab Navigation ----
 function switchTab(tabId) {
@@ -81,6 +178,14 @@ function switchTab(tabId) {
       tabId = 'dashboard';
     }
   }
+
+  // Clear all filter inputs and selects across all pages to ensure a fresh view
+  document.querySelectorAll('.filter-bar input').forEach(el => {
+    el.value = '';
+  });
+  document.querySelectorAll('.filter-bar select').forEach(el => {
+    el.value = '';
+  });
 
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + tabId));
@@ -190,7 +295,7 @@ function renderStatusDonut(byStatus, total) {
     <div class="chart-container">
       <div class="donut-chart">
         <svg width="140" height="140" viewBox="0 0 140 140">
-          <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="${stroke}"/>
+          <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#e2e8f0" stroke-width="${stroke}"/>
           ${segments}
         </svg>
         <div class="donut-center">
@@ -232,58 +337,49 @@ function initDashboardFilters() {
   const typeSel = document.getElementById('dashTypeFilter');
 
   const rebuildDashboardFilters = () => {
-    const projects = DB.getProjects();
-    const currentAg = agSel.value;
+    let currentAg = agSel.value;
+    if (currentAg === 'ทุกภาค') currentAg = '';
     const currentType = typeSel.value;
 
-    const masterOffices = DB.getRegionalOffices();
-    const masterTypes = PROJECT_TYPES;
+    const allProjects = DB.getProjects();
+    const useMasterOffices = [...new Set(allProjects.map(p => p.regionalOffice).filter(Boolean))].sort();
+    const useMasterTypes = [...new Set(allProjects.map(p => p.type).filter(Boolean))].map(t => {
+      const pt = PROJECT_TYPES.find(x => x.id === t);
+      return pt ? pt : { id: t, label: t, color: '#666' };
+    }).sort((a, b) => a.label.localeCompare(b.label));
 
     // Calculate available Agencies (ignoring Agency filter)
-    let agencyProjects = projects;
+    let agencyProjects = allProjects;
     if (currentType) agencyProjects = agencyProjects.filter(p => p.type === currentType);
     const availableAgencies = [...new Set(agencyProjects.map(p => p.regionalOffice).filter(Boolean))];
 
     // Calculate available Types (ignoring Type filter)
-    let typeProjects = projects;
+    let typeProjects = allProjects;
     let effectiveAgency = agSel.value;
-    if (currentUser && currentUser.role === 'user') effectiveAgency = currentUser.responsibility;
     if (effectiveAgency) typeProjects = typeProjects.filter(p => p.regionalOffice === effectiveAgency);
     const availableTypes = [...new Set(typeProjects.map(p => p.type).filter(Boolean))];
 
-    // Build Master Lists fallback if empty
-    let useMasterOffices = masterOffices;
-    if (!useMasterOffices || useMasterOffices.length === 0) useMasterOffices = [...new Set(projects.map(p => p.regionalOffice).filter(Boolean))];
-
-    let useMasterTypes = masterTypes;
-    if (!useMasterTypes || useMasterTypes.length === 0) useMasterTypes = [...new Set(projects.map(p => p.type).filter(Boolean))].map(t => ({ id: t, label: t }));
-
-    // Update Agency Select
-    if (currentUser && currentUser.role === 'user') {
-      agSel.innerHTML = `<option value="${currentUser.responsibility}">${currentUser.responsibility}</option>`;
-      agSel.disabled = true;
-    } else {
-      agSel.innerHTML = '<option value="">ทุกสำนักงานภาค</option>' + useMasterOffices.map(a => {
-        const count = availableAgencies.includes(a) ? 1 : 0;
-        const disabledAttr = count === 0 ? 'class="txt-muted"' : '';
-        const label = count === 0 ? `${a} (0)` : a;
-        return `<option value="${a}" ${disabledAttr}>${label}</option>`;
-      }).join('');
-      agSel.disabled = false;
-      if (currentAg && useMasterOffices.includes(currentAg)) agSel.value = currentAg;
-      else agSel.value = "";
-    }
+    // Update Agency Select — all users see full dropdown
+    agSel.innerHTML = '<option value="">ทุกสำนักงานภาค</option>' + useMasterOffices.map(a => {
+      const count = availableAgencies.includes(a) ? 1 : 0;
+      const disabledAttr = count === 0 ? 'class="txt-muted"' : '';
+      return `<option value="${a}" ${disabledAttr}>${a}</option>`;
+    }).join('');
+    agSel.disabled = false;
+    if (currentAg && useMasterOffices.includes(currentAg)) agSel.value = currentAg;
+    else agSel.value = "";
 
     // Update Type Select
     typeSel.innerHTML = '<option value="">ทุกประเภทงาน</option>' + useMasterTypes.map(tObj => {
       const t = tObj.id;
       const count = availableTypes.includes(t) ? 1 : 0;
       const disabledAttr = count === 0 ? 'class="txt-muted"' : '';
-      const label = count === 0 ? `${tObj.label} (0)` : tObj.label;
+      const label = tObj.label;
       return `<option value="${t}" ${disabledAttr}>${label}</option>`;
     }).join('');
     if (currentType && useMasterTypes.find(tObj => tObj.id === currentType)) typeSel.value = currentType;
     else typeSel.value = "";
+
   };
 
   // Initial build
@@ -299,15 +395,24 @@ function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId, typeId = 
   const search = document.getElementById(searchId)?.value.trim().toLowerCase();
 
   let agency = document.getElementById(agencyId)?.value;
-  if (currentUser && currentUser.role === 'user') {
-    agency = currentUser.responsibility;
-  }
+  // Treat "ทุกภาค" as no filter
+  if (agency === 'ทุกภาค') agency = '';
 
   const unit = document.getElementById(unitId)?.value;
   const fiscalYear = fiscalYearId ? document.getElementById(fiscalYearId)?.value : '';
   const type = typeId ? document.getElementById(typeId)?.value : '';
   const budgetType = budgetTypeId ? document.getElementById(budgetTypeId)?.value : '';
-  const statusFilter = statusId ? document.getElementById(statusId)?.value : '';
+
+  // For multi-select status, get from our custom attribute
+  let statusFilter = '';
+  const statusContainer = document.getElementById(statusId + 'Container');
+  const statusEl = document.getElementById(statusId);
+
+  if (statusContainer && statusContainer.hasAttribute('data-selected')) {
+    statusFilter = statusContainer.getAttribute('data-selected');
+  } else if (statusEl) {
+    statusFilter = statusEl.value;
+  }
 
   return projects.filter(p => {
     if (fiscalYear && String(p.fiscalYear) !== fiscalYear) return false;
@@ -317,10 +422,10 @@ function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId, typeId = 
     if (budgetType && p.budgetType !== budgetType) return false;
 
     if (statusFilter) {
-      if (statusFilter === 'pending') {
-        if (p.reviewStatus && p.reviewStatus !== 'pending') return false;
-      } else {
-        if (p.reviewStatus !== statusFilter) return false;
+      const selectedStatuses = statusFilter.split(',').filter(Boolean);
+      if (selectedStatuses.length > 0) {
+        const pStatus = p.reviewStatus || 'pending';
+        if (!selectedStatuses.includes(pStatus)) return false;
       }
     }
 
@@ -333,7 +438,13 @@ function getFilteredProjects(searchId, agencyId, unitId, fiscalYearId, typeId = 
         (p.amphoe && String(p.amphoe).toLowerCase().includes(s)) ||
         (p.tambon && String(p.tambon).toLowerCase().includes(s)) ||
         (p.budget && String(p.budget).includes(s)) ||
-        (p.quantity && String(p.quantity).includes(s));
+        (p.quantity && String(p.quantity).includes(s)) ||
+        (p.id && String(p.id).toLowerCase().includes(s)) ||
+        (p.unitOrg && String(p.unitOrg).toLowerCase().includes(s)) ||
+        (p.regionalOffice && String(p.regionalOffice).toLowerCase().includes(s)) ||
+        (p.type && String(p.type).toLowerCase().includes(s)) ||
+        (p.budgetType && String(p.budgetType).toLowerCase().includes(s)) ||
+        (p.dimension && String(p.dimension).toLowerCase().includes(s));
       if (!match) return false;
     }
 
@@ -364,16 +475,19 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
 
   if (!agSel || !unitSel || !searchIn) return;
 
-  // Helper to safely get value and handle user constraint
+  // Helper to safely get value
   const getFilterVal = (id) => {
-    if (id === agencyId && currentUser && currentUser.role === 'user') return currentUser.responsibility;
     return document.getElementById(id) ? document.getElementById(id).value : '';
   };
 
   const rebuildFilters = () => {
     const allProjects = DB.getProjects();
+
+    let agencyVal = getFilterVal(agencyId);
+    if (agencyVal === 'ทุกภาค') agencyVal = '';
+
     const currentVals = {
-      agency: getFilterVal(agencyId),
+      agency: agencyVal,
       unit: getFilterVal(unitId),
       fy: fiscalYearId ? getFilterVal(fiscalYearId) : '',
       type: typeId ? getFilterVal(typeId) : '',
@@ -390,50 +504,47 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
         if (ignoreField !== 'type' && currentVals.type && p.type !== currentVals.type) return false;
         if (ignoreField !== 'budget' && currentVals.budget && p.budgetType !== currentVals.budget) return false;
         if (ignoreField !== 'status' && currentVals.status) {
-          if (currentVals.status === 'pending') { if (p.reviewStatus && p.reviewStatus !== 'pending') return false; }
-          else { if (p.reviewStatus !== currentVals.status) return false; }
+          const selectedStatuses = currentVals.status.split(',').filter(Boolean);
+          if (selectedStatuses.length > 0) {
+            const pStatus = p.reviewStatus || 'pending';
+            if (!selectedStatuses.includes(pStatus)) return false;
+          }
         }
         return true;
       });
       return filtered;
     };
 
-    // Master lists with fallbacks
-    let masterOffices = DB.getRegionalOffices();
-    if (!masterOffices || masterOffices.length === 0) masterOffices = [...new Set(allProjects.map(p => p.regionalOffice).filter(Boolean))].sort();
+    // 1. MASTER LISTS: Derive from project data per user request
+    const masterOffices = [...new Set(allProjects.map(p => p.regionalOffice).filter(Boolean))].sort();
+    const masterUnits = currentVals.agency ?
+      [...new Set(allProjects.filter(p => p.regionalOffice === currentVals.agency).map(p => p.unitOrg).filter(Boolean))].sort() :
+      [...new Set(allProjects.map(p => p.unitOrg).filter(Boolean))].sort();
 
-    let masterUnits = currentVals.agency ? DB.getUnitsForOffice(currentVals.agency) : DB.getAllUnits();
-    if (!masterUnits || masterUnits.length === 0) masterUnits = [...new Set(allProjects.map(p => p.unitOrg).filter(Boolean))].sort();
+    const masterFy = [...new Set(allProjects.map(p => p.fiscalYear).filter(Boolean))].sort();
+    const masterTypes = [...new Set(allProjects.map(p => p.type).filter(Boolean))].map(t => {
+      const pt = PROJECT_TYPES.find(x => x.id === t);
+      return pt ? pt : { id: t, label: t, color: '#666' };
+    }).sort((a, b) => a.label.localeCompare(b.label));
+    const budgetTypes = [...new Set(allProjects.map(p => p.budgetType).filter(Boolean))].sort();
 
-    let masterTypes = PROJECT_TYPES;
-    if (!masterTypes || masterTypes.length === 0) masterTypes = [...new Set(allProjects.map(p => p.type).filter(Boolean))].map(t => ({ id: t, label: t }));
 
-    const budgetTypes = BUDGET_TYPES;
-    // Derive Master FY from all projects + current year as default
-    const currentBE = new Date().getFullYear() + 543;
-    const defaultFys = [currentBE - 1, currentBE, currentBE + 1, currentBE + 2];
-    const dbFys = [...new Set(allProjects.map(p => p.fiscalYear).filter(Boolean))];
-    const masterFy = [...new Set([...defaultFys, ...dbFys])].sort((a, b) => a - b);
+
 
     // Filter helper with error safety
     const safeInclude = (arr, val) => arr && arr.includes(val);
 
-    // 1. Rebuild Agencies
-    if (!currentUser || currentUser.role !== 'user') {
-      const agencySubset = getSubset('agency');
-      const availableAgencies = [...new Set(agencySubset.map(p => p.regionalOffice).filter(Boolean))];
-      agSel.innerHTML = '<option value="">ทุกสำนักงานภาค</option>' + masterOffices.map(a => {
-        const count = availableAgencies.includes(a) ? 1 : 0;
-        const cls = count === 0 ? 'class="txt-muted"' : '';
-        const label = count === 0 ? `${a} (0)` : a;
-        return `<option value="${a}" ${cls}>${label}</option>`;
-      }).join('');
-      if (currentVals.agency && masterOffices.includes(currentVals.agency)) agSel.value = currentVals.agency;
-      else agSel.value = "";
-    } else {
-      agSel.innerHTML = `<option value="${currentUser.responsibility}">${currentUser.responsibility}</option>`;
-      agSel.disabled = true;
-    }
+    // 1. Rebuild Agencies — all users see full dropdown
+    const agencySubset = getSubset('agency');
+    const availableAgencies = [...new Set(agencySubset.map(p => p.regionalOffice).filter(Boolean))];
+    agSel.innerHTML = '<option value="">ทุกสำนักงานภาค</option>' + masterOffices.map(a => {
+      const count = availableAgencies.includes(a) ? 1 : 0;
+      const cls = count === 0 ? 'class="txt-muted"' : '';
+      return `<option value="${a}" ${cls}>${a}</option>`;
+    }).join('');
+    agSel.disabled = false;
+    if (currentVals.agency && masterOffices.includes(currentVals.agency)) agSel.value = currentVals.agency;
+    else agSel.value = "";
 
     // 2. Rebuild Units
     const unitSubset = getSubset('unit');
@@ -441,7 +552,7 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
     unitSel.innerHTML = '<option value="">ทุกหน่วย</option>' + masterUnits.map(u => {
       const count = availableUnits.includes(u) ? 1 : 0;
       const cls = count === 0 ? 'class="txt-muted"' : '';
-      const label = count === 0 ? `${u} (0)` : u;
+      const label = u;
       return `<option value="${u}" ${cls}>${label}</option>`;
     }).join('');
     if (currentVals.unit && masterUnits.includes(currentVals.unit)) unitSel.value = currentVals.unit;
@@ -454,7 +565,7 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
       fySel.innerHTML = '<option value="">ทุกปีงบประมาณ</option>' + masterFy.map(y => {
         const count = availableFys.includes(y) ? 1 : 0;
         const cls = count === 0 ? 'class="txt-muted"' : '';
-        const label = count === 0 ? `พ.ศ. ${y} (0)` : `พ.ศ. ${y}`;
+        const label = `พ.ศ. ${y}`;
         return `<option value="${y}" ${cls}>${label}</option>`;
       }).join('');
       if (currentVals.fy && masterFy.map(String).includes(currentVals.fy)) fySel.value = currentVals.fy;
@@ -469,7 +580,7 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
         const t = tObj.id;
         const count = availableTypes.includes(t) ? 1 : 0;
         const cls = count === 0 ? 'class="txt-muted"' : '';
-        const label = count === 0 ? `${tObj.label} (0)` : tObj.label;
+        const label = tObj.label;
         return `<option value="${t}" ${cls}>${label}</option>`;
       }).join('');
       if (currentVals.type && masterTypes.find(tObj => tObj.id === currentVals.type)) typeSel.value = currentVals.type;
@@ -483,7 +594,7 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
       budgetTypeSel.innerHTML = '<option value="">ทุกประเภทงบ</option>' + budgetTypes.map(b => {
         const count = availableBudgets.includes(b) ? 1 : 0;
         const cls = count === 0 ? 'class="txt-muted"' : '';
-        const label = count === 0 ? `${b} (0)` : b;
+        const label = b;
         return `<option value="${b}" ${cls}>${label}</option>`;
       }).join('');
       if (currentVals.budget && budgetTypes.includes(currentVals.budget)) budgetTypeSel.value = currentVals.budget;
@@ -495,29 +606,50 @@ function initPageFilters(searchId, agencyId, unitId, renderFunc, fiscalYearId, t
       const statusSubset = getSubset('status');
       const availableStatuses = [...new Set(statusSubset.map(p => p.reviewStatus || 'pending'))];
 
-      statusSel.innerHTML = '<option value="">ทุกสถานะ</option>' + REVIEW_STATUSES.map(s => {
-        const count = availableStatuses.includes(s.id) ? 1 : 0;
-        const cls = count === 0 ? 'class="txt-muted"' : '';
-        const label = count === 0 ? `${s.label} (0)` : s.label;
-        return `<option value="${s.id}" ${cls}>${s.icon} ${label}</option>`;
-      }).join('');
-      if (currentVals.status && REVIEW_STATUSES.find(s => s.id === currentVals.status)) statusSel.value = currentVals.status;
-      else statusSel.value = "";
+      const allStatuses = [
+        { id: 'pending', label: 'รอการพิจารณา', icon: '⏳' },
+        ...REVIEW_STATUSES.filter(s => s.id !== 'pending')
+      ];
+
+      // Regular select
+      let optionsHTML = '<option value="">ทุกสถานะ</option>';
+      allStatuses.forEach(s => {
+        if (availableStatuses.includes(s.id)) {
+          optionsHTML += `<option value="${s.id}">${s.icon} ${s.label}</option>`;
+        }
+      });
+      statusSel.innerHTML = optionsHTML;
+
+      if (currentVals.status && availableStatuses.includes(currentVals.status)) {
+        statusSel.value = currentVals.status;
+      } else {
+        statusSel.value = "";
+      }
     }
   };
 
   // Setup Event Listeners
   const onChangeHandler = () => { rebuildFilters(); renderFunc(); };
 
-  if (!currentUser || currentUser.role !== 'user') {
-    agSel.addEventListener('change', onChangeHandler);
-  }
+  agSel.addEventListener('change', onChangeHandler);
   unitSel.addEventListener('change', onChangeHandler);
   if (fySel) fySel.addEventListener('change', onChangeHandler);
   if (typeSel) typeSel.addEventListener('change', onChangeHandler);
   if (budgetTypeSel) budgetTypeSel.addEventListener('change', onChangeHandler);
-  if (statusSel) statusSel.addEventListener('change', onChangeHandler);
-  searchIn.addEventListener('input', debounce(renderFunc, 300));
+
+  // Expose handler for multi-select custom events
+  if (statusId) {
+    const sEl = document.getElementById(statusId);
+    if (sEl) sEl.addEventListener('change', onChangeHandler);
+
+    const tc = document.getElementById(statusId + 'Container');
+    if (tc) tc.addEventListener('ms-change', onChangeHandler);
+  }
+
+  searchIn.addEventListener('input', debounce(() => {
+    rebuildFilters();
+    renderFunc();
+  }, 300));
 
   // Initial build and SMART DEFAULT for Fiscal Year
   rebuildFilters();
@@ -911,7 +1043,7 @@ function renderReviewPage() {
           ${Array.from({ length: maxRound }, (_, i) => i + 1).map(r =>
     `<option value="${r}" ${r === currentReviewRound ? 'selected' : ''}>ครั้งที่ ${r}</option>`
   ).join('')}
-          <option value="${maxRound + 1}">+ สู่รอบที่ ${maxRound + 1}</option>
+          <option value="${maxRound + 1}" ${currentReviewRound === (maxRound + 1) ? 'selected' : ''}>+ สู่รอบที่ ${maxRound + 1}</option>
         </select>
       </div>
   `;
@@ -945,7 +1077,7 @@ function renderReviewPage() {
     let historyHtml = '';
     if (p.history && p.history.length > 0) {
       historyHtml = `
-        <div class="history-info" style="margin-top:10px;padding:14px;background:rgba(255,255,255,0.03);border-radius:10px;font-size:13px;border:1px solid rgba(245,158,11,0.2)">
+        <div class="history-info" style="margin-top:10px;padding:14px;background:#fefce8;border-radius:10px;font-size:13px;border:1px solid rgba(245,158,11,0.2)">
           <div style="font-weight:600;margin-bottom:10px;color:var(--accent-yellow);display:flex;align-items:center;gap:8px;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.toggle-icon').textContent=this.nextElementSibling.style.display==='none'?'▶':'▼'">
             <span class="toggle-icon">▼</span> 📜 ประวัติการพิจารณา (${p.history.length} รอบ)
           </div>
@@ -993,7 +1125,7 @@ function renderReviewPage() {
           : '<div style="color:var(--text-muted);font-style:italic">ไม่มีการแก้ไขข้อมูลโครงการ</div>';
 
         historyHtml += `
-          <div style="padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,0.02);border-radius:8px;border-left:3px solid ${prevStatus?.color || '#64748b'}">
+          <div style="padding:10px 12px;margin-bottom:8px;background:#f8fafc;border-radius:8px;border-left:3px solid ${prevStatus?.color || '#64748b'}">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
               <div style="font-weight:600;color:var(--text-primary)">
                 รอบที่ ${prev.round}
@@ -1004,7 +1136,7 @@ function renderReviewPage() {
               <span style="font-size:11px;color:var(--text-muted)">📅 ${revisedDate}</span>
             </div>
             ${prev.comment ? `<div style="margin-bottom:6px"><span style="color:var(--text-muted)">💬 ความเห็น:</span> <span style="color:var(--text-secondary)">"${prev.comment}"</span></div>` : ''}
-            <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05)">
+            <div style="margin-top:6px;padding-top:6px;border-top:1px solid #e2e8f0">
               <div style="font-weight:500;color:var(--text-secondary);margin-bottom:4px">การเปลี่ยนแปลงข้อมูล:</div>
               ${changesHtml}
             </div>
@@ -1106,15 +1238,19 @@ function pullFailedProjects() {
     const pRound = p.round || 1;
     // Must be from a previous round
     if (pRound >= currentReviewRound) return false;
-    // Must have red or clarify status
-    if (p.reviewStatus !== 'red' && p.reviewStatus !== 'clarify') return false;
-    // Check that this project hasn't already been duplicated/revised into current or later round
-    // (reviseProject increments round, so if it was already revised, its round would be >= currentReviewRound)
+
+    // Must have a status that requires further review (red, clarify)
+    if (!['red', 'clarify'].includes(p.reviewStatus)) return false;
+
+    // Check history to ensure this exact iteration hasn't already been pulled to this target round
+    // If we are pulling to round 3, and history shows it was already pulled to round 3 or later, skip it.
+    if (p.history && p.history.some(h => (h.round || 1) >= currentReviewRound)) return false;
+
     return true;
   });
 
   if (candidates.length === 0) {
-    showToast(`ไม่พบโครงการที่มีสถานะ "ชี้แจงโครงการใหม่" หรือ "ไม่ผ่าน" จากรอบก่อนหน้า`, 'info');
+    showToast(`ไม่พบโครงการที่ต้องพิจารณาใหม่ (แดง/ชี้แจงใหม่) จากรอบก่อนหน้า`, 'info');
     return;
   }
 
@@ -1129,6 +1265,7 @@ function pullFailedProjects() {
   let detail = Object.entries(byRound).map(([r, ps]) => {
     const redCount = ps.filter(p => p.reviewStatus === 'red').length;
     const clarifyCount = ps.filter(p => p.reviewStatus === 'clarify').length;
+
     let parts = [];
     if (redCount > 0) parts.push(`🔴 ไม่ผ่าน ${redCount}`);
     if (clarifyCount > 0) parts.push(`🟡 ชี้แจงใหม่ ${clarifyCount}`);
@@ -1138,12 +1275,13 @@ function pullFailedProjects() {
   if (!confirm(`พบ ${candidates.length} โครงการที่พร้อมพิจารณาใหม่:\n\n${detail}\n\nต้องการนำมาพิจารณาในรอบที่ ${currentReviewRound} หรือไม่?`)) return;
 
   let count = 0;
+  // Use the same copy of projects for updates
+  const projectsToSave = DB.getProjects();
+
   candidates.forEach(p => {
-    // Set round directly to current round (not just +1)
-    const projects = DB.getProjects();
-    const idx = projects.findIndex(x => x.id === p.id);
+    const idx = projectsToSave.findIndex(x => x.id === p.id);
     if (idx !== -1) {
-      const proj = projects[idx];
+      const proj = projectsToSave[idx];
       // Save current state to history
       const historyItem = {
         round: proj.round || 1,
@@ -1158,7 +1296,9 @@ function pullFailedProjects() {
         province: proj.province,
         amphoe: proj.amphoe,
         tambon: proj.tambon,
-        revisedAt: new Date().toISOString()
+        revisedAt: new Date().toISOString(),
+        // Record which round it was pulled TO
+        pulledToRound: currentReviewRound
       };
       if (!proj.history) proj.history = [];
       proj.history.push(historyItem);
@@ -1167,10 +1307,14 @@ function pullFailedProjects() {
       proj.round = currentReviewRound;
       proj.reviewStatus = 'pending';
       proj.comment = '';
-      DB.saveProjects(projects);
       count++;
     }
   });
+
+  // Save all at once
+  if (count > 0) {
+    DB.saveProjects(projectsToSave);
+  }
 
   renderReviewPage();
   showToast(`ดึง ${count} โครงการมาพิจารณาใหม่ในรอบที่ ${currentReviewRound} สำเร็จ`, 'success');
@@ -1273,9 +1417,13 @@ function renderReportPage() {
 
   const rebuildReportFilters = () => {
     const allProjects = DB.getProjects();
+    let currentAgency = agSel.value;
+    if (currentUser && currentUser.role === 'user') currentAgency = currentUser.responsibility;
+    if (currentAgency === 'ทุกภาค') currentAgency = '';
+
     const currentVals = {
       fy: fySel.value,
-      agency: agSel.value,
+      agency: currentAgency,
       unit: unitSel.value,
       round: roundSel.value
     };
@@ -1291,40 +1439,36 @@ function renderReportPage() {
       return filtered;
     };
 
-    let masterOffices = DB.getRegionalOffices();
-    if (!masterOffices || masterOffices.length === 0) masterOffices = [...new Set(allProjects.map(p => p.regionalOffice).filter(Boolean))].sort();
-
-    const currentBE = new Date().getFullYear() + 543;
-    const defaultFys = [currentBE - 1, currentBE, currentBE + 1, currentBE + 2];
-    const dbFys = [...new Set(allProjects.map(p => p.fiscalYear).filter(Boolean))];
-    const masterFy = [...new Set([...defaultFys, ...dbFys])].sort((a, b) => a - b);
-    const masterRounds = [...new Set(allProjects.map(p => p.round || 1))];
+    // 1. MASTER LISTS: Derive from project data
+    let masterOffices = [...new Set(allProjects.map(p => p.regionalOffice).filter(Boolean))].sort();
+    let masterFy = [...new Set(allProjects.map(p => p.fiscalYear).filter(Boolean))].sort();
+    let masterRounds = [...new Set(allProjects.map(p => p.round || 1))];
     if (masterRounds.length === 0) masterRounds.push(1);
     masterRounds.sort((a, b) => a - b);
 
-    // 1. Rebuild FY
-    const fySubset = getSubset('fy');
-    const availableFys = [...new Set(fySubset.map(p => p.fiscalYear).filter(Boolean))];
-    fySel.innerHTML = '<option value="">ทุกปีงบประมาณ</option>' + masterFy.map(y => {
-      const count = availableFys.includes(y) ? 1 : 0;
-      const cls = count === 0 ? 'class="txt-muted"' : '';
-      const label = count === 0 ? `พ.ศ. ${y} (0)` : `พ.ศ. ${y}`;
-      return `<option value="${y}" ${cls}>${label}</option>`;
-    }).join('');
-    if (currentVals.fy && masterFy.map(String).includes(currentVals.fy)) fySel.value = currentVals.fy;
-    else fySel.value = "";
+    let masterUnits = currentVals.agency ?
+      [...new Set(allProjects.filter(p => p.regionalOffice === currentVals.agency).map(p => p.unitOrg).filter(Boolean))].sort() :
+      [...new Set(allProjects.map(p => p.unitOrg).filter(Boolean))].sort();
+
 
     // 2. Rebuild Agency
-    const agSubset = getSubset('agency');
-    const availableAgencies = [...new Set(agSubset.map(p => p.regionalOffice).filter(Boolean))];
-    agSel.innerHTML = '<option value="">ภาพรวมทั้งหมด</option>' + masterOffices.map(a => {
-      const count = availableAgencies.includes(a) ? 1 : 0;
-      const cls = count === 0 ? 'class="txt-muted"' : '';
-      const label = count === 0 ? `${a} (0)` : a;
-      return `<option value="${a}" ${cls}>${label}</option>`;
-    }).join('');
-    if (currentVals.agency && masterOffices.includes(currentVals.agency)) agSel.value = currentVals.agency;
-    else agSel.value = "";
+    if (!currentUser || currentUser.role !== 'user') {
+      const agSubset = getSubset('agency');
+      const availableAgencies = [...new Set(agSubset.map(p => p.regionalOffice).filter(Boolean))];
+      agSel.innerHTML = '<option value="">ภาพรวมทั้งหมด</option>' + masterOffices.map(a => {
+        const count = availableAgencies.includes(a) ? 1 : 0;
+        const cls = count === 0 ? 'class="txt-muted"' : '';
+        const label = a;
+        return `<option value="${a}" ${cls}>${label}</option>`;
+      }).join('');
+      if (currentVals.agency && masterOffices.includes(currentVals.agency)) agSel.value = currentVals.agency;
+      else agSel.value = "";
+      agSel.disabled = false;
+    } else {
+      agSel.innerHTML = `<option value="${currentUser.responsibility}">${currentUser.responsibility}</option>`;
+      agSel.value = currentUser.responsibility;
+      agSel.disabled = true;
+    }
 
     // 3. Rebuild Unit
     const unitSubset = getSubset('unit');
@@ -1332,7 +1476,7 @@ function renderReportPage() {
     unitSel.innerHTML = '<option value="">ทุกหน่วย</option>' + masterUnits.map(u => {
       const count = availableUnits.includes(u) ? 1 : 0;
       const cls = count === 0 ? 'class="txt-muted"' : '';
-      const label = count === 0 ? `${u} (0)` : u;
+      const label = u;
       return `<option value="${u}" ${cls}>${label}</option>`;
     }).join('');
     if (currentVals.unit && masterUnits.includes(currentVals.unit)) unitSel.value = currentVals.unit;
@@ -1344,7 +1488,7 @@ function renderReportPage() {
     roundSel.innerHTML = '<option value="">ทุกรอบการพิจารณา</option>' + masterRounds.map(r => {
       const count = availableRounds.includes(r) ? 1 : 0;
       const cls = count === 0 ? 'class="txt-muted"' : '';
-      const label = count === 0 ? `ครั้งที่ ${r} (0)` : `ครั้งที่ ${r}`;
+      const label = `ครั้งที่ ${r}`;
       return `<option value="${r}" ${cls}>${label}</option>`;
     }).join('');
     if (currentVals.round && masterRounds.map(String).includes(currentVals.round)) roundSel.value = currentVals.round;
@@ -1375,7 +1519,9 @@ function renderReportPage() {
 
 function updateReportPreview() {
   const fyFilter = document.getElementById('reportFiscalYearFilter').value;
-  const officeFilter = document.getElementById('reportAgencyFilter').value;
+  let officeFilter = document.getElementById('reportAgencyFilter').value;
+  if (currentUser && currentUser.role === 'user') officeFilter = currentUser.responsibility;
+
   const unitFilter = document.getElementById('reportUnitFilter').value;
   const roundFilter = document.getElementById('reportRoundFilter').value;
 
@@ -2042,24 +2188,40 @@ function resetDbDefaults() {
 
 // ===== INITIALIZE =====
 document.addEventListener('DOMContentLoaded', async () => {
-  // Show a simple loading indicator
-  const loadingDiv = document.createElement('div');
-  loadingDiv.id = 'dbLoadingOverlay';
-  loadingDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.95);display:flex;align-items:center;justify-content:center;z-index:9999;color:#fff;font-size:20px;flex-direction:column;gap:15px;';
-  loadingDiv.innerHTML = '<div class="spinner" style="width:40px;height:40px;border:4px solid rgba(255,255,255,0.1);border-left-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite;"></div><div>กำลังเชื่อมต่อระบบฐานข้อมูล...</div><style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>';
-  document.body.appendChild(loadingDiv);
+  // Use cached data to allow INSTANT UI rendering, while loading fresh database in the background
+  const hasCache = localStorage.getItem('pb_projects') !== null;
 
-  try {
-    if (typeof DB !== 'undefined' && DB.init) {
-      await DB.init();
-    }
-  } catch (err) {
-    console.error(err);
-  } finally {
-    if (document.getElementById('dbLoadingOverlay')) {
-      document.getElementById('dbLoadingOverlay').remove();
-    }
+  if (!hasCache) {
+    // Show a simple loading indicator ONLY on first cold start without cache
+    const loadingDiv = document.createElement('div');
+    loadingDiv.id = 'dbLoadingOverlay';
+    loadingDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.95);display:flex;align-items:center;justify-content:center;z-index:9999;color:#fff;font-size:20px;flex-direction:column;gap:15px;';
+    loadingDiv.innerHTML = '<div class="spinner" style="width:40px;height:40px;border:4px solid rgba(255,255,255,0.1);border-left-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite;"></div><div>กำลังเชื่อมต่อระบบฐานข้อมูล...</div><style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>';
+    document.body.appendChild(loadingDiv);
   }
+
+  // Define an async IIFE to run non-blocking DB.init
+  (async () => {
+    try {
+      if (typeof DB !== 'undefined' && DB.init) {
+        await DB.init();
+        // If we had a cache, re-render the active tab transparently after fresh data arrives.
+        if (hasCache) {
+          const activeTab = document.querySelector('.nav-tab.active');
+          if (activeTab) {
+            switchTab(activeTab.dataset.tab);
+            initDashboardFilters(); // Make sure dashboard counts refresh
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      if (document.getElementById('dbLoadingOverlay')) {
+        document.getElementById('dbLoadingOverlay').remove();
+      }
+    }
+  })();
 
   // --- Start UI Initialization ---
   checkAuth();

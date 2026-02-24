@@ -72,7 +72,7 @@ const DEFAULT_USERS = [
 const REVIEW_STATUSES = [
     { id: 'pending', label: 'รอการพิจารณา', color: '#64748b', icon: '⏳' },
     { id: 'green', label: 'เขียว (ผ่านการพิจารณา)', color: '#10b981', icon: '🟢' },
-    { id: 'adjust', label: 'ปรับประมาณการ', color: '#f59e0b', icon: '🟡' },
+    { id: 'adjust', label: 'ปรับประมาณการ/ส่งเอกสารเพิ่มเติม', color: '#f59e0b', icon: '🟡' },
     { id: 'docs', label: 'ส่งเอกสารเพิ่มเติม', color: '#f59e0b', icon: '🟡' },
     { id: 'clarify', label: 'ชี้แจงโครงการใหม่', color: '#f59e0b', icon: '🟡' },
     { id: 'red', label: 'แดง (ไม่ผ่านการพิจารณา)', color: '#ef4444', icon: '🔴' }
@@ -423,7 +423,7 @@ const DB = {
 
         projects.forEach(p => {
             // Apply Filters
-            if (filterOffice && p.regionalOffice !== filterOffice) return;
+            if (filterOffice && filterOffice !== 'ทุกภาค' && p.regionalOffice !== filterOffice) return;
             if (filterType && p.type !== filterType) return;
 
             stats.total++;

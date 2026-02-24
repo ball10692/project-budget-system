@@ -131,26 +131,7 @@ const ExcelUtils = {
                     const regionalOffice = String(row[12] || '').trim();
                     const unitOrg = String(row[13] || '').trim();
 
-                    // Validate sub-item against database
-                    if (subItem && typeof DB !== 'undefined' && !DB.isValidSubItem(typeId, subItem)) {
-                        warnings.push(`แถว ${i + 1}: "${subItem}" ไม่ตรงกับรายการย่อยในฐานข้อมูลของประเภท ${typeId}`);
-                    }
-
-                    // Validate regional office exists
-                    if (regionalOffice && typeof DB !== 'undefined') {
-                        const validOffices = DB.getRegionalOffices();
-                        if (!validOffices.includes(regionalOffice)) {
-                            warnings.push(`แถว ${i + 1}: ภาค "${regionalOffice}" ไม่ตรงกับฐานข้อมูล`);
-                        }
-                    }
-
-                    // Validate unit belongs to regional office
-                    if (unitOrg && regionalOffice && typeof DB !== 'undefined') {
-                        const validUnits = DB.getUnitsForOffice(regionalOffice);
-                        if (validUnits.length > 0 && !validUnits.includes(unitOrg)) {
-                            warnings.push(`แถว ${i + 1}: หน่วย "${unitOrg}" ไม่ตรงกับภาค "${regionalOffice}"`);
-                        }
-                    }
+                    // No validation against DB config per user request
 
                     projects.push({
                         type: typeId,
@@ -175,17 +156,7 @@ const ExcelUtils = {
                     return;
                 }
 
-                // Show validation warnings if any
-                if (warnings.length > 0) {
-                    const maxShow = 5;
-                    let msg = `⚠️ พบ ${warnings.length} รายการที่ไม่ตรงกับฐานข้อมูล:\n\n`;
-                    msg += warnings.slice(0, maxShow).join('\n');
-                    if (warnings.length > maxShow) {
-                        msg += `\n...และอีก ${warnings.length - maxShow} รายการ`;
-                    }
-                    msg += '\n\nต้องการนำเข้าต่อหรือไม่?';
-                    if (!confirm(msg)) return;
-                }
+                // No validation warnings per user request
 
                 callback(projects);
             } catch (err) {
